@@ -48,7 +48,7 @@ export default function PropertyManagement() {
     addAuditLog: onAddAuditLog
   } = useStateContext();
 
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.1.98:5000/api';
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://mobappssolutiondevelopment.com/kleverProp/api';
 
   // API Properties & Pagination State
   const [propertiesList, setPropertiesList] = useState([]);
@@ -102,7 +102,11 @@ export default function PropertyManagement() {
   const [editFormLongitude, setEditFormLongitude] = useState('');
   const [editFormPropertyType, setEditFormPropertyType] = useState('APARTMENT');
   const [editFormListingType, setEditFormListingType] = useState('BUY');
-  const [editFormPrice, setEditFormPrice] = useState('');
+  const [editFormConstructionStatus, setEditFormConstructionStatus] = useState('Off-plan');
+  const [editFormIsShortTermRentalAllowed, setEditFormIsShortTermRentalAllowed] = useState(false);
+  const [editFormPriceDop, setEditFormPriceDop] = useState('');
+  const [editFormPriceUsd, setEditFormPriceUsd] = useState('');
+  const [editFormPriceEur, setEditFormPriceEur] = useState('');
   const [editFormBedrooms, setEditFormBedrooms] = useState(2);
   const [editFormBathrooms, setEditFormBathrooms] = useState(2);
   const [editFormSize, setEditFormSize] = useState(1200);
@@ -138,7 +142,11 @@ export default function PropertyManagement() {
   const [addFormLongitude, setAddFormLongitude] = useState('');
   const [addFormPropertyType, setAddFormPropertyType] = useState('APARTMENT');
   const [addFormListingType, setAddFormListingType] = useState('BUY');
-  const [addFormPrice, setAddFormPrice] = useState('');
+  const [addFormConstructionStatus, setAddFormConstructionStatus] = useState('Off-plan');
+  const [addFormIsShortTermRentalAllowed, setAddFormIsShortTermRentalAllowed] = useState(false);
+  const [addFormPriceDop, setAddFormPriceDop] = useState('');
+  const [addFormPriceUsd, setAddFormPriceUsd] = useState('');
+  const [addFormPriceEur, setAddFormPriceEur] = useState('');
   const [addFormBedrooms, setAddFormBedrooms] = useState(2);
   const [addFormBathrooms, setAddFormBathrooms] = useState(2);
   const [addFormSize, setAddFormSize] = useState(1200);
@@ -157,6 +165,167 @@ export default function PropertyManagement() {
   const searchTimeoutRef = useRef(null);
 
   // Helpers to safely parse multilingual / nested property schema
+  const toApiPropertyType = (type) => {
+    if (!type) return 'APARTMENT';
+    const str = String(type).trim().toUpperCase();
+    if (str === 'APARTMENT') return 'APARTMENT';
+    if (str === 'HOUSE') return 'HOUSE';
+    if (str === 'LAND' || str.includes('SOLAR') || str.includes('TERRENO') || str.includes('PLOT')) return 'LAND';
+    if (str.includes('OFFICE')) return 'OFFICE';
+    if (str.includes('COMMERCIAL') || str.includes('LOCAL')) return 'COMMERCIAL';
+    return str;
+  };
+
+  const normalizePropertyType = (type) => {
+    if (!type) return 'Apartment';
+    const str = String(type).trim().toUpperCase();
+    if (str === 'APARTMENT') return 'Apartment';
+    if (str === 'HOUSE') return 'House';
+    if (str === 'LAND' || str.includes('SOLAR') || str.includes('TERRENO') || str.includes('PLOT')) return 'Land/Solar (Terreno)';
+    if (str === 'OFFICE' || str === 'OFFICEE') return 'Office';
+    if (str === 'COMMERCIAL' || str.includes('LOCAL')) return 'Commercial Local';
+    return String(type);
+  };
+
+  const extractPrices = (rawPrice, rawObj = {}) => {
+    let dop = null;
+    let usd = null;
+    let eur = null;
+
+    const parseNum = (val) => {
+      if (val === null || val === undefined || val === '') return null;
+      if (typeof val === 'number') return isNaN(val) ? null : val;
+      if (typeof val === 'string') {
+        const clean = val.replace(/[^0-9.-]+/g, '');
+        if (clean === '' || clean === '-' || clean === '.') return null;
+        const num = Number(clean);
+        return isNaN(num) ? null : num;
+      }
+      return null;
+    };
+
+    const tryExtractFromObj = (obj) => {
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return;
+      if (dop === null) {
+        dop = parseNum(obj.dop ?? obj.DOP ?? obj.priceDop ?? obj.price_dop ?? obj['price[dop]'] ?? obj.rd ?? obj.RD);
+      }
+      if (usd === null) {
+        usd = parseNum(obj.usd ?? obj.USD ?? obj.priceUsd ?? obj.price_usd ?? obj['price[usd]'] ?? obj.dollar);
+      }
+      if (eur === null) {
+        eur = parseNum(obj.eur ?? obj.EUR ?? obj.priceEur ?? obj.price_eur ?? obj['price[eur]'] ?? obj.euro);
+      }
+    };
+
+    if (typeof rawPrice === 'string') {
+      const trimmed = rawPrice.trim();
+      if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          tryExtractFromObj(parsed);
+        } catch {
+          // not json
+        }
+      }
+    }
+
+    if (rawPrice && typeof rawPrice === 'object') {
+      tryExtractFromObj(rawPrice);
+      if (rawPrice.price && typeof rawPrice.price === 'object') {
+        tryExtractFromObj(rawPrice.price);
+      }
+    } else if (usd === null && dop === null && eur === null) {
+      const directNum = parseNum(rawPrice);
+      if (directNum !== null && directNum > 0) {
+        usd = directNum;
+      }
+    }
+
+    if (rawObj && typeof rawObj === 'object') {
+      tryExtractFromObj(rawObj);
+      if (rawObj.price && typeof rawObj.price === 'object') {
+        tryExtractFromObj(rawObj.price);
+      }
+      if (rawObj.pricing && typeof rawObj.pricing === 'object') {
+        tryExtractFromObj(rawObj.pricing);
+      }
+      if (rawObj.prices && typeof rawObj.prices === 'object') {
+        tryExtractFromObj(rawObj.prices);
+      }
+      if (usd === null && dop === null && eur === null) {
+        const objPrice = parseNum(rawObj.price || rawObj.propertyPrice || rawObj.amount || rawObj.rent);
+        if (objPrice !== null && objPrice > 0) {
+          usd = objPrice;
+        }
+      }
+    }
+
+    return {
+      dop: dop !== null && dop > 0 ? dop : null,
+      usd: usd !== null && usd > 0 ? usd : null,
+      eur: eur !== null && eur > 0 ? eur : null,
+      raw: rawPrice
+    };
+  };
+
+  const renderPriceBadges = (prop, isTable = false) => {
+    const prices = prop?.prices || extractPrices(prop?.price, prop?.raw || prop || {});
+    let primary = null;
+    if (prices.usd != null && prices.usd > 0) {
+      primary = { text: `$${prices.usd.toLocaleString()}`, currency: 'usd' };
+    } else if (prices.dop != null && prices.dop > 0) {
+      primary = { text: `RD$ ${prices.dop.toLocaleString()}`, currency: 'dop' };
+    } else if (prices.eur != null && prices.eur > 0) {
+      primary = { text: `€${prices.eur.toLocaleString()}`, currency: 'eur' };
+    } else {
+      const numFallback = typeof prop?.price === 'number' ? prop.price : (typeof prop?.rawPrice === 'number' ? prop.rawPrice : null);
+      if (numFallback !== null && numFallback > 0) {
+        primary = { text: `$${numFallback.toLocaleString()}`, currency: 'usd' };
+      } else {
+        primary = { text: '$0', currency: 'usd' };
+      }
+    }
+
+    const secondaries = [];
+    if (primary.currency !== 'dop' && prices.dop != null && prices.dop > 0) {
+      secondaries.push({ label: `RD$ ${prices.dop.toLocaleString()}`, color: '#b47404' });
+    }
+    if (primary.currency !== 'usd' && prices.usd != null && prices.usd > 0) {
+      secondaries.push({ label: `$${prices.usd.toLocaleString()}`, color: 'var(--primary)' });
+    }
+    if (primary.currency !== 'eur' && prices.eur != null && prices.eur > 0) {
+      secondaries.push({ label: `€${prices.eur.toLocaleString()}`, color: '#0369a1' });
+    }
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: isTable ? '0.15rem' : '0.1rem' }}>
+        <span style={{ fontSize: isTable ? '0.95rem' : '1.05rem', fontWeight: 800, color: 'var(--primary)' }}>
+          {primary.text}
+          {prop?.listingType === 'RENT' && <span style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--text-secondary)' }}> /mo</span>}
+        </span>
+        {secondaries.length > 0 && (
+          <div style={{ display: 'flex', gap: '0.4rem', fontSize: '0.72rem', flexWrap: 'wrap' }}>
+            {secondaries.map((sec, idx) => (
+              <span key={idx} style={{ color: sec.color, fontWeight: 600 }}>{sec.label}</span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const formatPriceString = (prop) => {
+    if (!prop) return '$0';
+    const prices = prop.prices || extractPrices(prop.price, prop.raw || prop);
+    const parts = [];
+    if (prices.usd != null && prices.usd > 0) parts.push(`$${prices.usd.toLocaleString()}`);
+    if (prices.dop != null && prices.dop > 0) parts.push(`RD$ ${prices.dop.toLocaleString()}`);
+    if (prices.eur != null && prices.eur > 0) parts.push(`€${prices.eur.toLocaleString()}`);
+    if (parts.length > 0) return parts.join(' • ');
+    if (prop.price && Number(prop.price) > 0) return `$${Number(prop.price).toLocaleString()}`;
+    return '$0';
+  };
+
   const getPropertyTitle = (title) => {
     if (!title) return 'Property Asset';
     if (typeof title === 'string') return title;
@@ -171,11 +340,17 @@ export default function PropertyManagement() {
   };
 
   const getPropertyImage = (images, fallbackImage) => {
-    const raw = (images && Array.isArray(images) && images.length > 0) ? images[0] : fallbackImage;
-    if (!raw) return 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=800&auto=format&fit=crop&q=80';
-    if (raw.startsWith('http') || raw.startsWith('blob:')) return raw;
-    const serverUrl = baseUrl.replace(/\/api$/, '');
-    return `${serverUrl}${raw.startsWith('/') ? '' : '/'}${raw}`;
+    let rawItem = (images && Array.isArray(images) && images.length > 0) ? images[0] : (images && typeof images === 'string' ? images : fallbackImage);
+    let raw = typeof rawItem === 'string' ? rawItem : (rawItem?.url || rawItem?.path || rawItem?.secure_url || rawItem?.src || rawItem?.location || fallbackImage || '');
+    if (!raw || typeof raw !== 'string') return 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=800&auto=format&fit=crop&q=80';
+    let clean = raw.trim().replace(/\\/g, '/');
+    if (clean.startsWith('blob:') || clean.startsWith('data:')) return clean;
+    if (/^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?/i.test(clean)) {
+      clean = clean.replace(/^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?/, '');
+    }
+    if (clean.startsWith('http://') || clean.startsWith('https://')) return clean;
+    const imageBaseUrl = import.meta.env.VITE_IMAGE_URL || (baseUrl ? baseUrl.replace(/\/api\/?$/, '') : '') || 'https://mobappssolutiondevelopment.com/kleverProp';
+    return `${imageBaseUrl.replace(/\/+$/, '')}/${clean.replace(/^\/+/, '')}`;
   };
 
   const getPropertyDescription = (desc) => {
@@ -192,6 +367,54 @@ export default function PropertyManagement() {
       .split(' ')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
+  };
+
+  const getAmenityDisplayName = (amenity) => {
+    if (!amenity) return 'Amenity';
+
+    // 1. If amenity is an object
+    if (typeof amenity === 'object') {
+      if (amenity.name) {
+        if (typeof amenity.name === 'object') {
+          return amenity.name.en || amenity.name.es || Object.values(amenity.name)[0] || 'Amenity';
+        }
+        return String(amenity.name);
+      }
+      // If object has _id or id but no name, look it up in amenitiesList
+      const aId = amenity._id || amenity.id;
+      if (aId && amenitiesList && amenitiesList.length > 0) {
+        const found = amenitiesList.find(a => (a._id || a.id) === aId);
+        if (found) {
+          if (typeof found.name === 'object') {
+            return found.name.en || found.name.es || Object.values(found.name)[0] || 'Amenity';
+          }
+          return String(found.name || 'Amenity');
+        }
+      }
+      return 'Amenity';
+    }
+
+    // 2. If amenity is a string (ID or name string)
+    if (typeof amenity === 'string') {
+      if (amenitiesList && amenitiesList.length > 0) {
+        const found = amenitiesList.find(a => (a._id || a.id) === amenity);
+        if (found) {
+          if (typeof found.name === 'object') {
+            return found.name.en || found.name.es || Object.values(found.name)[0] || 'Amenity';
+          }
+          return String(found.name || 'Amenity');
+        }
+      }
+
+      // If it looks like a 24-character hexadecimal MongoDB ObjectId that couldn't be matched
+      if (/^[0-9a-fA-F]{24}$/.test(amenity)) {
+        return 'Amenity';
+      }
+
+      return amenity;
+    }
+
+    return 'Amenity';
   };
 
   // GET ALL AMENITIES: /admin/amenities
@@ -299,6 +522,9 @@ export default function PropertyManagement() {
         const locStr = getPropertyLocation(p.location);
         const imgUrl = getPropertyImage(p.images, p.image);
         const isActiveState = p.isActive !== false && p.status !== 'Inactive' && p.status !== 'Suspended';
+        const propTypeStr = normalizePropertyType(p.propertyType || p.type);
+        const pricesObj = extractPrices(p.price, p);
+        const primaryNumericPrice = pricesObj.usd || pricesObj.dop || pricesObj.eur || (typeof p.price === 'number' ? p.price : 0);
 
         return {
           _id: p._id || p.id,
@@ -310,15 +536,19 @@ export default function PropertyManagement() {
           location: locStr,
           rawLocation: p.location,
           portal: p.source || p.portal || 'Admin',
-          type: p.propertyType ? (p.propertyType.charAt(0).toUpperCase() + p.propertyType.slice(1).toLowerCase()) : (p.type || 'House'),
-          propertyType: p.propertyType || p.type || 'HOUSE',
+          type: propTypeStr,
+          propertyType: propTypeStr,
           listingType: p.listingType || 'BUY',
-          price: Number(p.price) || 0,
+          price: primaryNumericPrice,
+          prices: pricesObj,
+          rawPrice: p.price,
           bedrooms: p.bedrooms != null ? p.bedrooms : 2,
           bathrooms: p.bathrooms != null ? p.bathrooms : 2,
           size: p.size || null,
           sizeUnit: p.sizeUnit || 'sq ft',
           furnishedStatus: p.furnishedStatus || '',
+          constructionStatus: p.constructionStatus || 'Off-plan',
+          isShortTermRentalAllowed: Boolean(p.isShortTermRentalAllowed),
           amenities: p.amenities || [],
           agentDetails: p.agentDetails || null,
           status: isActiveState ? 'Active' : 'Inactive',
@@ -460,17 +690,15 @@ export default function PropertyManagement() {
     }
   };
 
-  const resetForm = () => {
-    setFormTitle('');
-    setFormPrice('');
-    setFormLocation('');
-    setFormPortal('Manual Entry');
-    setFormType('Apartment');
-    setFormBedrooms(2);
-    setFormFurnishedStatus('SEMI_FURNISHED');
-    setFormStatus('Active');
-    setFormFeatured(false);
-    setFormImage('');
+  const toggleFeatured = (prop) => {
+    const propId = prop._id || prop.id;
+    setPropertiesList(prev => prev.map(p => {
+      if ((p._id || p.id) === propId) {
+        return { ...p, featured: !p.featured };
+      }
+      return p;
+    }));
+    toast.success(`Property marked as ${!prop.featured ? 'Featured' : 'Standard'}`);
   };
 
   const handleImageFileChange = (e) => {
@@ -529,7 +757,11 @@ export default function PropertyManagement() {
     setAddFormLongitude('');
     setAddFormPropertyType('APARTMENT');
     setAddFormListingType('BUY');
-    setAddFormPrice('');
+    setAddFormConstructionStatus('Off-plan');
+    setAddFormIsShortTermRentalAllowed(false);
+    setAddFormPriceDop('');
+    setAddFormPriceUsd('');
+    setAddFormPriceEur('');
     setAddFormBedrooms(2);
     setAddFormBathrooms(2);
     setAddFormSize(1200);
@@ -560,8 +792,8 @@ export default function PropertyManagement() {
       return;
     }
 
-    if (!addFormPrice) {
-      toast.error('Please enter the property price.');
+    if (!addFormPriceUsd && !addFormPriceDop && !addFormPriceEur) {
+      toast.error('Please enter at least one property price (e.g. USD, DOP, or EUR).');
       return;
     }
 
@@ -596,9 +828,17 @@ export default function PropertyManagement() {
       if (addFormLongitude) formData.append('longitude', addFormLongitude);
 
       // Classification & Specs
-      formData.append('propertyType', addFormPropertyType);
+      formData.append('propertyType', toApiPropertyType(addFormPropertyType));
       formData.append('listingType', addFormListingType);
-      formData.append('price', Number(addFormPrice));
+      formData.append('constructionStatus', addFormConstructionStatus || 'Off-plan');
+      formData.append('isShortTermRentalAllowed', addFormIsShortTermRentalAllowed ? 'true' : 'false');
+
+      // Multi-currency price fields: price[dop], price[usd], price[eur]
+      if (addFormPriceDop !== '') formData.append('price[dop]', Number(addFormPriceDop));
+      if (addFormPriceUsd !== '') formData.append('price[usd]', Number(addFormPriceUsd));
+      if (addFormPriceEur !== '') formData.append('price[eur]', Number(addFormPriceEur));
+      formData.append('price', Number(addFormPriceUsd || addFormPriceDop || addFormPriceEur || 0));
+
       formData.append('bedrooms', Number(addFormBedrooms) || 0);
       formData.append('bathrooms', Number(addFormBathrooms) || 0);
       if (addFormSize) formData.append('size', Number(addFormSize));
@@ -717,10 +957,17 @@ export default function PropertyManagement() {
     setEditFormLongitude(lng !== '' && lng != null ? String(lng) : '');
 
     // Classification & Specs
-    const pType = (raw.propertyType || prop.propertyType || prop.type || 'APARTMENT').toUpperCase();
-    setEditFormPropertyType(['APARTMENT', 'HOUSE', 'PLOT', 'COMMERCIAL'].includes(pType) ? pType : 'APARTMENT');
+    setEditFormPropertyType(toApiPropertyType(raw.propertyType || prop.propertyType || prop.type));
     setEditFormListingType((raw.listingType || prop.listingType || 'BUY').toUpperCase());
-    setEditFormPrice(raw.price ?? prop.price ?? '');
+    setEditFormConstructionStatus(raw.constructionStatus || prop.constructionStatus || 'Off-plan');
+    setEditFormIsShortTermRentalAllowed(Boolean(raw.isShortTermRentalAllowed ?? prop.isShortTermRentalAllowed ?? false));
+    
+    // Multi-currency Prices
+    const prices = extractPrices(raw.price ?? prop.price, raw);
+    setEditFormPriceDop(prices.dop != null ? String(prices.dop) : '');
+    setEditFormPriceUsd(prices.usd != null ? String(prices.usd) : '');
+    setEditFormPriceEur(prices.eur != null ? String(prices.eur) : '');
+
     setEditFormBedrooms(raw.bedrooms ?? prop.bedrooms ?? 2);
     setEditFormBathrooms(raw.bathrooms ?? prop.bathrooms ?? 2);
     setEditFormSize(raw.size ?? prop.size ?? 1200);
@@ -759,6 +1006,21 @@ export default function PropertyManagement() {
       });
       const fullData = res.data?.data?.property || res.data?.property || res.data?.data || res.data;
       if (fullData) {
+        if (fullData.propertyType || fullData.type) {
+          setEditFormPropertyType(toApiPropertyType(fullData.propertyType || fullData.type));
+        }
+        if (fullData.constructionStatus) {
+          setEditFormConstructionStatus(fullData.constructionStatus);
+        }
+        if (fullData.isShortTermRentalAllowed !== undefined) {
+          setEditFormIsShortTermRentalAllowed(Boolean(fullData.isShortTermRentalAllowed));
+        }
+        if (fullData.price != null) {
+          const fullPrices = extractPrices(fullData.price, fullData);
+          if (fullPrices.dop != null) setEditFormPriceDop(String(fullPrices.dop));
+          if (fullPrices.usd != null) setEditFormPriceUsd(String(fullPrices.usd));
+          if (fullPrices.eur != null) setEditFormPriceEur(String(fullPrices.eur));
+        }
         if (fullData.title && typeof fullData.title === 'object') {
           if (fullData.title.en) setEditFormEnTitle(fullData.title.en);
           if (fullData.title.es) setEditFormEsTitle(fullData.title.es);
@@ -801,8 +1063,8 @@ export default function PropertyManagement() {
       toast.error('Please enter the English property title.');
       return;
     }
-    if (!editFormPrice) {
-      toast.error('Please enter the property price.');
+    if (!editFormPriceUsd && !editFormPriceDop && !editFormPriceEur) {
+      toast.error('Please enter at least one property price (e.g. USD, DOP, or EUR).');
       return;
     }
     if (!editFormAddress.trim()) {
@@ -837,9 +1099,17 @@ export default function PropertyManagement() {
       if (editFormLongitude) formData.append('longitude', editFormLongitude);
 
       // Classification & Specs
-      formData.append('propertyType', editFormPropertyType);
+      formData.append('propertyType', toApiPropertyType(editFormPropertyType));
       formData.append('listingType', editFormListingType);
-      formData.append('price', Number(editFormPrice));
+      formData.append('constructionStatus', editFormConstructionStatus || 'Off-plan');
+      formData.append('isShortTermRentalAllowed', editFormIsShortTermRentalAllowed ? 'true' : 'false');
+
+      // Multi-currency price fields: price[dop], price[usd], price[eur]
+      if (editFormPriceDop !== '') formData.append('price[dop]', Number(editFormPriceDop));
+      if (editFormPriceUsd !== '') formData.append('price[usd]', Number(editFormPriceUsd));
+      if (editFormPriceEur !== '') formData.append('price[eur]', Number(editFormPriceEur));
+      formData.append('price', Number(editFormPriceUsd || editFormPriceDop || editFormPriceEur || 0));
+
       formData.append('bedrooms', Number(editFormBedrooms) || 0);
       formData.append('bathrooms', Number(editFormBathrooms) || 0);
       if (editFormSize) formData.append('size', Number(editFormSize));
@@ -955,7 +1225,19 @@ export default function PropertyManagement() {
   const filteredProperties = propertiesList.filter((p) => {
     const matchesSearch = p.title.toLowerCase().includes(searchTerm.toLowerCase()) || p.location.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesPortal = portalFilter === 'All' || p.portal === portalFilter;
-    const matchesStatus = statusFilter === 'All' || p.status === statusFilter;
+    let matchesStatus = true;
+    if (statusFilter !== 'All') {
+      const sf = statusFilter.toUpperCase();
+      if (sf === 'ACTIVE') {
+        matchesStatus = p.status === 'Active' || p.isActive === true;
+      } else if (sf === 'INACTIVE') {
+        matchesStatus = p.status === 'Inactive' || p.isActive === false;
+      } else {
+        matchesStatus =
+          (p.listingType && p.listingType.toUpperCase() === sf) ||
+          (p.status && p.status.toUpperCase() === sf);
+      }
+    }
     return matchesSearch && matchesPortal && matchesStatus;
   });
 
@@ -982,11 +1264,17 @@ export default function PropertyManagement() {
   };
 
   // Selected Detail Modal Images Array
-  const detailImages = (selectedPropDetails?.images && Array.isArray(selectedPropDetails.images) && selectedPropDetails.images.length > 0)
-    ? selectedPropDetails.images.map(img => getPropertyImage([img], selectedProp?.image))
-    : (selectedProp?.images && Array.isArray(selectedProp.images) && selectedProp.images.length > 0)
-      ? selectedProp.images.map(img => getPropertyImage([img], selectedProp.image))
-      : [selectedProp?.image || 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=800&auto=format&fit=crop&q=80'];
+  const rawDetailImagesList = (selectedPropDetails?.images && Array.isArray(selectedPropDetails.images) && selectedPropDetails.images.length > 0)
+    ? selectedPropDetails.images
+    : (selectedPropDetails?.gallery && Array.isArray(selectedPropDetails.gallery) && selectedPropDetails.gallery.length > 0)
+      ? selectedPropDetails.gallery
+      : (selectedProp?.images && Array.isArray(selectedProp.images) && selectedProp.images.length > 0)
+        ? selectedProp.images
+        : (selectedProp?.image ? [selectedProp.image] : (selectedPropDetails?.image ? [selectedPropDetails.image] : []));
+
+  const detailImages = rawDetailImagesList.length > 0
+    ? rawDetailImagesList.map(img => getPropertyImage(typeof img === 'string' ? [img] : (img?.url ? [img.url] : (img?.path ? [img.path] : [img])), selectedProp?.image))
+    : [selectedProp?.image || 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=800&auto=format&fit=crop&q=80'];
 
   const currentPreviewImage = detailImages[selectedImageIndex] || detailImages[0] || selectedProp?.image;
 
@@ -1056,10 +1344,10 @@ export default function PropertyManagement() {
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
-          <button className="btn btn-primary" onClick={() => setShowAddModal(true)} style={{ gap: '0.5rem' }}>
+          {/* <button className="btn btn-primary" onClick={() => setShowAddModal(true)} style={{ gap: '0.5rem' }}>
             <Plus size={16} />
             Manually Add Property
-          </button>
+          </button> */}
         </div>
       </div>
 
@@ -1080,10 +1368,10 @@ export default function PropertyManagement() {
         <div className="flex-align-center" style={{ gap: '0.5rem' }}>
           <select className="form-control form-select" style={{ width: '140px', padding: '0.5rem 2rem 0.5rem 1rem' }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="All">All Statuses</option>
+            <option value="Buy">Buy</option>
+            <option value="Rent">Rent</option>
             <option value="Active">Active</option>
             <option value="Inactive">Inactive</option>
-            <option value="Sold">Sold</option>
-            <option value="Rented">Rented</option>
           </select>
         </div>
       </div>
@@ -1195,10 +1483,7 @@ export default function PropertyManagement() {
                     <div className="flex-between" style={{ marginTop: 'auto', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
                       <div>
                         <span style={{ fontSize: '0.625rem', color: 'var(--text-muted)', display: 'block' }}>PRICE</span>
-                        <span style={{ fontSize: '1.125rem', fontWeight: 800, color: 'var(--primary)' }}>
-                          USD ${prop.price.toLocaleString()}
-                          {prop.listingType === 'RENT' && <span style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--text-secondary)' }}> /mo</span>}
-                        </span>
+                        {renderPriceBadges(prop, false)}
                       </div>
                       <span className={`badge ${prop.status === 'Active' ? 'badge-success' : 'badge-danger'}`}>
                         {prop.status}
@@ -1338,10 +1623,7 @@ export default function PropertyManagement() {
                           )}
                         </td>
                         <td>
-                          <strong style={{ color: 'var(--primary)', fontSize: '0.95rem' }}>
-                            ${prop.price.toLocaleString()}
-                          </strong>
-                          {prop.listingType === 'RENT' && <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}> /mo</span>}
+                          {renderPriceBadges(prop, true)}
                         </td>
                         <td>
                           <span className={`badge ${prop.status === 'Active' ? 'badge-success' : 'badge-danger'}`}>
@@ -1727,6 +2009,10 @@ export default function PropertyManagement() {
                             src={imgUrl}
                             alt={`Thumbnail ${idx + 1}`}
                             style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=400&auto=format&fit=crop&q=80';
+                            }}
                           />
                         </button>
                       ))}
@@ -1744,50 +2030,106 @@ export default function PropertyManagement() {
                   </div>
 
                   {/* Price & Key Specs Grid */}
-                  <div style={{ background: '#faf8f5', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '0.85rem 1rem' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '0.75rem', fontSize: '0.8125rem' }}>
-                      <div>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>LISTING PRICE</span>
-                        <strong style={{ fontSize: '1.05rem', color: 'var(--primary)' }}>
-                          ${Number(selectedPropDetails?.price || selectedProp.price || 0).toLocaleString()}
-                        </strong>
+                  {(() => {
+                    const viewPrices = extractPrices(selectedPropDetails?.price || selectedProp?.price, selectedPropDetails || selectedProp || {});
+                    return (
+                      <div style={{ background: '#faf8f5', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '0.85rem 1rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', fontSize: '0.8125rem' }}>
+                          <div>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block', marginBottom: '0.2rem' }}>LISTING PRICE</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                              {viewPrices.usd != null && (
+                                <strong style={{ fontSize: '0.8125rem', color: 'var(--primary)', fontWeight: 700 }}>
+                                  ${viewPrices.usd.toLocaleString()}
+                                </strong>
+                              )}
+                              {viewPrices.dop != null && (
+                                <strong style={{ fontSize: '0.8125rem', color: '#b47404', fontWeight: 700 }}>
+                                  RD$ {viewPrices.dop.toLocaleString()}
+                                </strong>
+                              )}
+                              {viewPrices.eur != null && (
+                                <strong style={{ fontSize: '0.8125rem', color: '#0369a1', fontWeight: 700 }}>
+                                  €{viewPrices.eur.toLocaleString()}
+                                </strong>
+                              )}
+                              {viewPrices.usd == null && viewPrices.dop == null && viewPrices.eur == null && (
+                                <strong style={{ fontSize: '0.8125rem', color: 'var(--primary)', fontWeight: 700 }}>
+                                  $0
+                                </strong>
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>TYPE & DEAL</span>
+                            <strong style={{ color: 'var(--text-primary)' }}>
+                              {normalizePropertyType(selectedPropDetails?.propertyType || selectedProp?.propertyType || selectedProp?.type)} • {(selectedPropDetails?.listingType || selectedProp?.listingType || 'RENT')}
+                            </strong>
+                          </div>
+                          <div>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>ROOMS</span>
+                            <strong style={{ color: 'var(--text-primary)' }}>
+                              {selectedPropDetails?.bedrooms != null ? selectedPropDetails.bedrooms : (selectedProp?.bedrooms != null ? selectedProp?.bedrooms : 3)} Beds • {selectedPropDetails?.bathrooms != null ? selectedPropDetails.bathrooms : (selectedProp?.bathrooms != null ? selectedProp?.bathrooms : 2)} Baths
+                            </strong>
+                          </div>
+                          <div>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>AREA / SIZE</span>
+                            <strong style={{ color: 'var(--text-primary)' }}>
+                              {selectedPropDetails?.size ? `${Number(selectedPropDetails.size).toLocaleString()} ${selectedPropDetails.sizeUnit || 'sq ft'}` : (selectedProp?.size ? `${Number(selectedProp?.size).toLocaleString()} ${selectedProp?.sizeUnit || 'sq ft'}` : '1,500 sq ft')}
+                            </strong>
+                          </div>
+                          {/* <div>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>FURNISHED STATUS</span>
+                            <strong style={{ color: 'var(--text-primary)' }}>
+                              <span style={{
+                                display: 'inline-block',
+                                background: 'rgba(250, 179, 25, 0.14)',
+                                color: '#b47404',
+                                padding: '2px 7px',
+                                borderRadius: '4px',
+                                fontSize: '0.75rem',
+                                fontWeight: 700
+                              }}>
+                                {formatFurnishedStatus(selectedPropDetails?.furnishedStatus || selectedProp?.furnishedStatus)}
+                              </span>
+                            </strong>
+                          </div> */}
+                          {/* <div>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>CONSTRUCTION</span>
+                            <strong style={{ color: 'var(--text-primary)' }}>
+                              <span style={{
+                                display: 'inline-block',
+                                background: 'rgba(59, 130, 246, 0.12)',
+                                color: '#1d4ed8',
+                                padding: '2px 7px',
+                                borderRadius: '4px',
+                                fontSize: '0.75rem',
+                                fontWeight: 700
+                              }}>
+                                {selectedPropDetails?.constructionStatus || selectedProp?.constructionStatus || 'Off-plan'}
+                              </span>
+                            </strong>
+                          </div> */}
+                          {/* <div>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>SHORT-TERM RENTAL</span>
+                            <strong style={{ color: 'var(--text-primary)' }}>
+                              <span style={{
+                                display: 'inline-block',
+                                background: (selectedPropDetails?.isShortTermRentalAllowed ?? selectedProp?.isShortTermRentalAllowed) ? 'rgba(34, 197, 94, 0.12)' : 'rgba(100, 116, 139, 0.12)',
+                                color: (selectedPropDetails?.isShortTermRentalAllowed ?? selectedProp?.isShortTermRentalAllowed) ? '#15803d' : '#64748b',
+                                padding: '2px 7px',
+                                borderRadius: '4px',
+                                fontSize: '0.75rem',
+                                fontWeight: 700
+                              }}>
+                                {(selectedPropDetails?.isShortTermRentalAllowed ?? selectedProp?.isShortTermRentalAllowed) ? 'Allowed' : 'Not Allowed'}
+                              </span>
+                            </strong>
+                          </div> */}
+                        </div>
                       </div>
-                      <div>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>TYPE & DEAL</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>
-                          {(selectedPropDetails?.propertyType || selectedProp.propertyType || selectedProp.type || 'COMMERCIAL')} • {(selectedPropDetails?.listingType || selectedProp.listingType || 'RENT')}
-                        </strong>
-                      </div>
-                      <div>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>ROOMS</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>
-                          {selectedPropDetails?.bedrooms != null ? selectedPropDetails.bedrooms : (selectedProp.bedrooms != null ? selectedProp.bedrooms : 3)} Beds • {selectedPropDetails?.bathrooms != null ? selectedPropDetails.bathrooms : (selectedProp.bathrooms != null ? selectedProp.bathrooms : 2)} Baths
-                        </strong>
-                      </div>
-                      <div>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>AREA / SIZE</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>
-                          {selectedPropDetails?.size ? `${Number(selectedPropDetails.size).toLocaleString()} ${selectedPropDetails.sizeUnit || 'sq ft'}` : (selectedProp.size ? `${Number(selectedProp.size).toLocaleString()} ${selectedProp.sizeUnit || 'sq ft'}` : '1,500 sq ft')}
-                        </strong>
-                      </div>
-                      <div>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>FURNISHED STATUS</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>
-                          <span style={{
-                            display: 'inline-block',
-                            background: 'rgba(250, 179, 25, 0.14)',
-                            color: '#b47404',
-                            padding: '2px 7px',
-                            borderRadius: '4px',
-                            fontSize: '0.75rem',
-                            fontWeight: 700
-                          }}>
-                            {formatFurnishedStatus(selectedPropDetails?.furnishedStatus || selectedProp.furnishedStatus)}
-                          </span>
-                        </strong>
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
 
                   {/* Multilingual Description */}
                   {(selectedPropDetails?.description || selectedProp.description) && (
@@ -1809,10 +2151,11 @@ export default function PropertyManagement() {
                       </h5>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                         {(selectedPropDetails?.amenities || selectedProp.amenities).map((amenity, idx) => {
-                          const name = typeof amenity === 'object' && amenity.name ? (typeof amenity.name === 'object' ? (amenity.name.en || amenity.name.es) : amenity.name) : (typeof amenity === 'string' ? amenity : 'Amenity');
+                          const name = getAmenityDisplayName(amenity);
+                          const aKey = typeof amenity === 'object' ? (amenity._id || amenity.id || idx) : amenity || idx;
                           return (
                             <span
-                              key={amenity._id || idx}
+                              key={aKey}
                               style={{
                                 fontSize: '0.75rem',
                                 background: 'rgba(250, 179, 25, 0.1)',
@@ -1950,7 +2293,7 @@ export default function PropertyManagement() {
                   <span className="badge badge-info" style={{ marginBottom: '0.5rem' }}>{mergingProps[0].portal}</span>
                   <h4 style={{ marginBottom: '0.5rem', color: 'var(--text-primary)' }}>{mergingProps[0].title}</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    <p><strong>Price:</strong> USD ${mergingProps[0].price.toLocaleString()}</p>
+                    <p><strong>Price:</strong> {formatPriceString(mergingProps[0])}</p>
                     <p><strong>Location:</strong> {mergingProps[0].location}</p>
                     <p><strong>Beds:</strong> {mergingProps[0].bedrooms}</p>
                     {mergingProps[0].furnishedStatus && <p><strong>Furnishing:</strong> {formatFurnishedStatus(mergingProps[0].furnishedStatus)}</p>}
@@ -1975,7 +2318,7 @@ export default function PropertyManagement() {
                   <span className="badge badge-warning" style={{ marginBottom: '0.5rem' }}>{mergingProps[1].portal}</span>
                   <h4 style={{ marginBottom: '0.5rem', color: 'var(--text-primary)' }}>{mergingProps[1].title}</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    <p><strong>Price:</strong> USD ${mergingProps[1].price.toLocaleString()}</p>
+                    <p><strong>Price:</strong> {formatPriceString(mergingProps[1])}</p>
                     <p><strong>Location:</strong> {mergingProps[1].location}</p>
                     <p><strong>Beds:</strong> {mergingProps[1].bedrooms}</p>
                     {mergingProps[1].furnishedStatus && <p><strong>Furnishing:</strong> {formatFurnishedStatus(mergingProps[1].furnishedStatus)}</p>}
@@ -2120,20 +2463,22 @@ export default function PropertyManagement() {
               {/* 2. Classification & Pricing */}
               <div style={{ background: '#faf8f5', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '1rem' }}>
                 <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginBottom: '0.75rem' }}>
-                  2. Classification & Pricing
+                  2. Classification & Multi-Currency Pricing
                 </span>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
                   <div className="form-group">
                     <label className="form-label" style={{ fontSize: '0.8rem' }}>Property Type *</label>
                     <select
                       className="form-control form-select"
-                      value={addFormPropertyType}
+                      value={toApiPropertyType(addFormPropertyType)}
                       onChange={(e) => setAddFormPropertyType(e.target.value)}
                     >
-                      <option value="APARTMENT">APARTMENT</option>
-                      <option value="HOUSE">HOUSE</option>
-                      <option value="PLOT">PLOT</option>
-                      <option value="COMMERCIAL">COMMERCIAL</option>
+                      <option value="APARTMENT">Apartment</option>
+                      <option value="HOUSE">House</option>
+                      <option value="LAND">Land/Solar (Terreno)</option>
+                      <option value="OFFICE">Office</option>
+                      <option value="COMMERCIAL">Commercial Local</option>
                     </select>
                   </div>
 
@@ -2149,19 +2494,21 @@ export default function PropertyManagement() {
                     </select>
                   </div>
 
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontSize: '0.8rem' }}>Price (USD) *</label>
-                    <input
-                      type="number"
-                      className="form-control"
-                      placeholder="e.g. 275000"
-                      value={addFormPrice}
-                      onChange={(e) => setAddFormPrice(e.target.value)}
+                  {/* <div className="form-group">
+                    <label className="form-label" style={{ fontSize: '0.8rem' }}>Construction Status *</label>
+                    <select
+                      className="form-control form-select"
+                      value={addFormConstructionStatus}
+                      onChange={(e) => setAddFormConstructionStatus(e.target.value)}
                       required
-                    />
-                  </div>
+                    >
+                      <option value="Off-plan">Off-plan</option>
+                      <option value="Brand New">Brand New</option>
+                      <option value="Resale">Resale</option>
+                    </select>
+                  </div> */}
 
-                  <div className="form-group">
+                  {/* <div className="form-group">
                     <label className="form-label" style={{ fontSize: '0.8rem' }}>Furnished Status *</label>
                     <select
                       className="form-control form-select"
@@ -2172,6 +2519,63 @@ export default function PropertyManagement() {
                       <option value="SEMI_FURNISHED">Semi Furnished</option>
                       <option value="UNFURNISHED">Unfurnished</option>
                     </select>
+                  </div> */}
+
+                  {/* <div className="form-group">
+                    <label className="form-label" style={{ fontSize: '0.8rem' }}>Short-Term Rental</label>
+                    <select
+                      className="form-control form-select"
+                      value={addFormIsShortTermRentalAllowed ? 'true' : 'false'}
+                      onChange={(e) => setAddFormIsShortTermRentalAllowed(e.target.value === 'true')}
+                    >
+                      <option value="false">No (Not Allowed)</option>
+                      <option value="true">Yes (Allowed)</option>
+                    </select>
+                  </div> */}
+                </div>
+
+                {/* Pricing Fields: DOP, USD, EUR */}
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem' }}>
+                  Property Pricing in Multi-Currency (price[dop], price[usd], price[eur])
+                </span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem' }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ fontWeight: 600, color: '#b47404' }}>DOP (RD$)</span> <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>price[dop]</span>
+                    </label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      placeholder="e.g. 5500000"
+                      value={addFormPriceDop}
+                      onChange={(e) => setAddFormPriceDop(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ fontWeight: 600, color: 'var(--primary)' }}>USD ($) *</span> <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>price[usd]</span>
+                    </label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      placeholder="e.g. 95000"
+                      value={addFormPriceUsd}
+                      onChange={(e) => setAddFormPriceUsd(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ fontWeight: 600, color: '#0369a1' }}>EUR (€)</span> <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>price[eur]</span>
+                    </label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      placeholder="e.g. 88000"
+                      value={addFormPriceEur}
+                      onChange={(e) => setAddFormPriceEur(e.target.value)}
+                    />
                   </div>
                 </div>
               </div>
@@ -2716,20 +3120,22 @@ export default function PropertyManagement() {
               {/* 2. Classification & Pricing */}
               <div style={{ background: '#faf8f5', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '1rem' }}>
                 <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginBottom: '0.75rem' }}>
-                  2. Classification & Pricing
+                  2. Classification & Multi-Currency Pricing
                 </span>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
                   <div className="form-group">
                     <label className="form-label" style={{ fontSize: '0.8rem' }}>Property Type *</label>
                     <select
                       className="form-control form-select"
-                      value={editFormPropertyType}
+                      value={toApiPropertyType(editFormPropertyType)}
                       onChange={(e) => setEditFormPropertyType(e.target.value)}
                     >
-                      <option value="APARTMENT">APARTMENT</option>
-                      <option value="HOUSE">HOUSE</option>
-                      <option value="PLOT">PLOT</option>
-                      <option value="COMMERCIAL">COMMERCIAL</option>
+                      <option value="APARTMENT">Apartment</option>
+                      <option value="HOUSE">House</option>
+                      <option value="LAND">Land/Solar (Terreno)</option>
+                      <option value="OFFICE">Office</option>
+                      <option value="COMMERCIAL">Commercial Local</option>
                     </select>
                   </div>
 
@@ -2745,19 +3151,21 @@ export default function PropertyManagement() {
                     </select>
                   </div>
 
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontSize: '0.8rem' }}>Price (USD) *</label>
-                    <input
-                      type="number"
-                      className="form-control"
-                      placeholder="e.g. 275000"
-                      value={editFormPrice}
-                      onChange={(e) => setEditFormPrice(e.target.value)}
+                  {/* <div className="form-group">
+                    <label className="form-label" style={{ fontSize: '0.8rem' }}>Construction Status *</label>
+                    <select
+                      className="form-control form-select"
+                      value={editFormConstructionStatus}
+                      onChange={(e) => setEditFormConstructionStatus(e.target.value)}
                       required
-                    />
-                  </div>
+                    >
+                      <option value="Off-plan">Off-plan</option>
+                      <option value="Brand New">Brand New</option>
+                      <option value="Resale">Resale</option>
+                    </select>
+                  </div> */}
 
-                  <div className="form-group">
+                  {/* <div className="form-group">
                     <label className="form-label" style={{ fontSize: '0.8rem' }}>Furnished Status *</label>
                     <select
                       className="form-control form-select"
@@ -2768,6 +3176,63 @@ export default function PropertyManagement() {
                       <option value="SEMI_FURNISHED">Semi Furnished</option>
                       <option value="UNFURNISHED">Unfurnished</option>
                     </select>
+                  </div> */}
+
+                  {/* <div className="form-group">
+                    <label className="form-label" style={{ fontSize: '0.8rem' }}>Short-Term Rental</label>
+                    <select
+                      className="form-control form-select"
+                      value={editFormIsShortTermRentalAllowed ? 'true' : 'false'}
+                      onChange={(e) => setEditFormIsShortTermRentalAllowed(e.target.value === 'true')}
+                    >
+                      <option value="false">No (Not Allowed)</option>
+                      <option value="true">Yes (Allowed)</option>
+                    </select>
+                  </div> */}
+                </div>
+
+                {/* Pricing Fields: DOP, USD, EUR */}
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem' }}>
+                  Property Pricing in Multi-Currency (price[dop], price[usd], price[eur])
+                </span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem' }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ fontWeight: 600, color: '#b47404' }}>DOP (RD$)</span> <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>price[dop]</span>
+                    </label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      placeholder="e.g. 5500000"
+                      value={editFormPriceDop}
+                      onChange={(e) => setEditFormPriceDop(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ fontWeight: 600, color: 'var(--primary)' }}>USD ($) *</span> <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>price[usd]</span>
+                    </label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      placeholder="e.g. 95000"
+                      value={editFormPriceUsd}
+                      onChange={(e) => setEditFormPriceUsd(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ fontWeight: 600, color: '#0369a1' }}>EUR (€)</span> <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>price[eur]</span>
+                    </label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      placeholder="e.g. 88000"
+                      value={editFormPriceEur}
+                      onChange={(e) => setEditFormPriceEur(e.target.value)}
+                    />
                   </div>
                 </div>
               </div>
@@ -3356,12 +3821,12 @@ export default function PropertyManagement() {
                   <p style={{ margin: '0 0 0.35rem 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                     📍 {propertyToDelete.location}
                   </p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <strong style={{ color: 'var(--primary)', fontSize: '0.85rem' }}>
-                      ${propertyToDelete.price?.toLocaleString()}
+                      {formatPriceString(propertyToDelete)}
                     </strong>
                     <span className="badge badge-info" style={{ fontSize: '0.65rem', padding: '1px 5px' }}>
-                      {propertyToDelete.type || propertyToDelete.propertyType}
+                      {normalizePropertyType(propertyToDelete.type || propertyToDelete.propertyType)}
                     </span>
                     <span className="badge badge-secondary" style={{ fontSize: '0.65rem', padding: '1px 5px' }}>
                       {propertyToDelete.listingType}

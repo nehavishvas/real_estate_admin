@@ -7,10 +7,16 @@ import AdminLayout from './components/AdminLayout';
 import Dashboard from './components/Dashboard';
 import UserManagement from './components/UserManagement';
 import RealtorManagement from './components/RealtorManagement';
+import AgencyManagement from './components/AgencyManagement';
+import TierManagement from './components/TierManagement';
 import PropertyManagement from './components/PropertyManagement';
 import PortalManagement from './components/PortalManagement';
 import AiManagement from './components/AiManagement';
 import Reports from './components/Reports';
+import TermsAndConditions from './components/TermsAndConditions';
+import TermsAndConditionsEdit from './components/TermsAndConditionsEdit';
+import PrivacyPolicy from './components/PrivacyPolicy';
+import PrivacyPolicyEdit from './components/PrivacyPolicyEdit';
 import SettingsComponent from './components/Settings';
 import AuditLogs from './components/AuditLogs';
 import Profile from './components/Profile';
@@ -18,6 +24,7 @@ import ChangePassword from './components/ChangePassword';
 
 export default function App() {
   const { adminUser } = useStateContext();
+  console.log("Date:21-11-2026, Time:-12:14")
 
   return (
     <>
@@ -49,24 +56,41 @@ export default function App() {
         }}
       />
 
-      {/* Strict Authentication Guard: Without login, no route or page can be accessed */}
+      {/* Authentication Guard: Terms & Conditions and Privacy Policy can be accessed without login */}
       {!adminUser ? (
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/terms" element={<TermsAndConditions />} />
+          <Route path="/terms-and-conditions" element={<Navigate to="/terms" replace />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/privacy" element={<Navigate to="/privacy-policy" replace />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       ) : (
         <Routes>
           <Route path="/login" element={<Navigate to="/dashboard" replace />} />
+          {/* Standalone Terms View: Outside AdminLayout so NO sidebar and NO admin header */}
+          <Route path="/terms" element={<TermsAndConditions />} />
+          <Route path="/terms-and-conditions" element={<Navigate to="/terms" replace />} />
+          {/* Standalone Privacy Policy View: Outside AdminLayout so NO sidebar and NO admin header */}
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/privacy" element={<Navigate to="/privacy-policy" replace />} />
           <Route element={<AdminLayout />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/users" element={<UserManagement />} />
             <Route path="/realtors" element={<RealtorManagement />} />
+            <Route path="/agencies" element={<AgencyManagement />} />
+            <Route path="/agency" element={<Navigate to="/agencies" replace />} />
+            <Route path="/tiers" element={<TierManagement />} />
+            <Route path="/tier" element={<Navigate to="/tiers" replace />} />
             <Route path="/properties" element={<PropertyManagement />} />
             <Route path="/portals" element={<PortalManagement />} />
             <Route path="/ai" element={<AiManagement />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/terms-edit" element={<TermsAndConditionsEdit />} />
+            <Route path="/privacy-policy-edit" element={<PrivacyPolicyEdit />} />
+            <Route path="/privacy-edit" element={<Navigate to="/privacy-policy-edit" replace />} />
             <Route path="/settings" element={<SettingsComponent />} />
             <Route path="/logs" element={<AuditLogs />} />
             <Route path="/profile" element={<Profile />} />

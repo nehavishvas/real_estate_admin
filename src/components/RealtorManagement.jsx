@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useStateContext } from '../context/StateContext';
 import {
   Building,
   CheckCircle,
+  CheckCircle2,
   Clock,
   XCircle,
   FileCheck,
@@ -29,10 +30,785 @@ import {
   ExternalLink,
   X,
   MessageSquare,
-  Users
+  Users,
+  Award,
+  Sparkles,
+  Flame,
+  MapPin,
+  CreditCard,
+  DollarSign,
+  Calendar,
+  Home,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+  Maximize2,
+  ShieldCheck,
+  Globe
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+
+const defaultApiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://mobappssolutiondevelopment.com/kleverProp/api';
+const defaultImageUrl = import.meta.env.VITE_IMAGE_URL || 'https://mobappssolutiondevelopment.com/kleverProp';
+
+// Helper to safely extract string values from strings or nested objects
+const safeRenderText = (val, fallback = '—') => {
+  if (val === null || val === undefined || val === '') return fallback;
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number') return String(val);
+  if (typeof val === 'object') {
+    return val.name || val.agencyName || val.title || val.en || val.es || val.number || val.licenseNumber || val.value || fallback;
+  }
+  return String(val);
+};
+
+// Color palette generator for consistent monogram initial avatar circles
+const getAvatarColors = (name = '') => {
+  const palettes = [
+    { bg: 'linear-gradient(135deg, rgba(250, 179, 25, 0.22) 0%, rgba(250, 179, 25, 0.42) 100%)', text: '#b47404', border: 'var(--primary)' },
+    { bg: 'linear-gradient(135deg, rgba(14, 165, 233, 0.18) 0%, rgba(14, 165, 233, 0.35) 100%)', text: '#0284c7', border: '#38bdf8' },
+    { bg: 'linear-gradient(135deg, rgba(16, 185, 129, 0.18) 0%, rgba(16, 185, 129, 0.35) 100%)', text: '#059669', border: '#34d399' },
+    { bg: 'linear-gradient(135deg, rgba(139, 92, 246, 0.18) 0%, rgba(139, 92, 246, 0.35) 100%)', text: '#7c3aed', border: '#a78bfa' },
+    { bg: 'linear-gradient(135deg, rgba(244, 63, 94, 0.18) 0%, rgba(244, 63, 94, 0.35) 100%)', text: '#e11d48', border: '#fb7185' },
+    { bg: 'linear-gradient(135deg, rgba(10, 31, 57, 0.15) 0%, rgba(10, 31, 57, 0.28) 100%)', text: '#0a1f39', border: '#64748b' }
+  ];
+  let hash = 0;
+  for (let i = 0; i < (name || '').length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return palettes[Math.abs(hash) % palettes.length];
+};
+
+// Helper to generate candidate URLs with robust normalization using VITE_IMAGE_URL
+const getMediaUrlCandidates = (mediaPath, baseUrl = defaultApiBaseUrl, imageUrl = defaultImageUrl) => {
+  if (!mediaPath) return [];
+  if (typeof mediaPath === 'object') {
+    mediaPath = mediaPath.url || mediaPath.secure_url || mediaPath.path || mediaPath.uri || mediaPath.src || '';
+  }
+  if (!mediaPath || typeof mediaPath !== 'string') return [];
+
+  let clean = mediaPath.trim().replace(/\\/g, '/');
+  if (!clean) return [];
+
+  if (clean.startsWith('blob:') || clean.startsWith('data:')) {
+    return [clean];
+  }
+
+  const baseImage = (import.meta.env.VITE_IMAGE_URL || imageUrl || (baseUrl || defaultApiBaseUrl).replace(/\/api\/?$/, '')).replace(/\/+$/, '');
+
+  // Strip any legacy local dev IPs or localhost from database records
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?\//i.test(clean)) {
+    clean = clean.replace(/^https?:\/\/[^/]+/i, '');
+  }
+
+  // If already a valid remote URL (e.g. CloudFront, S3), return it directly
+  if (/^https?:\/\//i.test(clean)) {
+    return [clean];
+  }
+
+  // Extract clean uploads relative path
+  let relPath = clean;
+  if (/^[a-zA-Z]:\//i.test(relPath) || relPath.includes('/uploads/')) {
+    const match = relPath.match(/(uploads\/.*)$/i);
+    if (match) relPath = match[1];
+  }
+  relPath = relPath.replace(/^\/+/, '')
+                   .replace(/^(kleverProp\/)+/i, '')
+                   .replace(/^(api\/)+/i, '')
+                   .replace(/^public\//i, '');
+
+  const uploadsPath = relPath.includes('uploads/')
+    ? relPath.slice(relPath.indexOf('uploads/'))
+    : (relPath.startsWith('uploads') ? relPath : 'uploads/' + relPath);
+
+  // Return primary normalized URL with .env VITE_IMAGE_URL
+  return [
+    `${baseImage}/${uploadsPath}`,
+    `${baseImage}/${relPath}`
+  ];
+};
+
+// Primary Media URL Helper
+const getMediaUrl = (mediaPath, baseUrl = defaultApiBaseUrl, imageUrl = defaultImageUrl) => {
+  const list = getMediaUrlCandidates(mediaPath, baseUrl, imageUrl);
+  return list.length > 0 ? list[0] : null;
+};
+
+// Resilient Realtor Avatar with smooth error fallback to monogram circle
+const RealtorAvatar = ({ src, name = 'Agent', size = 38, fontSize = '0.9rem', border = '2px solid var(--primary)', style = {}, baseUrl = defaultApiBaseUrl, imageUrl = defaultImageUrl }) => {
+  const [imgError, setImgError] = useState(false);
+  const formattedUrl = useMemo(() => getMediaUrl(src, baseUrl, imageUrl), [src, baseUrl, imageUrl]);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [formattedUrl]);
+
+  const initial = (name && typeof name === 'string' && name.trim() && name !== '—') ? name.trim().charAt(0).toUpperCase() : 'A';
+  const colors = getAvatarColors(name);
+
+  if (formattedUrl && !imgError) {
+    return (
+      <img
+        src={formattedUrl}
+        alt={name}
+        onError={() => setImgError(true)}
+        style={{
+          width: `${size}px`,
+          height: `${size}px`,
+          borderRadius: '50%',
+          objectFit: 'cover',
+          border,
+          flexShrink: 0,
+          background: '#f1f5f9',
+          ...style
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: '50%',
+        background: colors.bg,
+        border,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 700,
+        fontSize,
+        color: colors.text,
+        flexShrink: 0,
+        userSelect: 'none',
+        ...style
+      }}
+      title={name}
+    >
+      {initial}
+    </div>
+  );
+};
+
+// Dedicated, Resilient Document Review & Lightbox Component
+const RealtorDocumentSection = ({ agent, details, baseUrl = defaultApiBaseUrl }) => {
+  const [candidateIndex, setCandidateIndex] = useState(0);
+  const [hasError, setHasError] = useState(false);
+  const [isImgLoaded, setIsImgLoaded] = useState(false);
+  const [showLightbox, setShowLightbox] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [downloading, setDownloading] = useState(false);
+  const [activeDocIndex, setActiveDocIndex] = useState(0);
+
+  // Extract all uploaded documents from agent details
+  const documentsList = useMemo(() => {
+    const list = [];
+    const agentObj = details?.agent || details || agent || {};
+
+    // 1. ID Document Front (Passport / Cedula)
+    if (agentObj.idDocumentFront) {
+      list.push({
+        id: 'idFront',
+        name: `${agentObj.idType || 'ID / Passport'} (Front)`,
+        category: 'Legal Identification',
+        number: agentObj.idNumber,
+        path: agentObj.idDocumentFront
+      });
+    }
+
+    // 2. ID Document Back
+    if (agentObj.idDocumentBack) {
+      list.push({
+        id: 'idBack',
+        name: `${agentObj.idType || 'ID / Passport'} (Back)`,
+        category: 'Legal Identification',
+        number: agentObj.idNumber,
+        path: agentObj.idDocumentBack
+      });
+    }
+
+    // 3. AEI Membership Card (Dominican Real Estate Association)
+    if (agentObj.aeiCard) {
+      list.push({
+        id: 'aeiCard',
+        name: 'AEI Membership Card',
+        category: 'Association License',
+        number: agentObj.aeiNumber,
+        path: agentObj.aeiCard
+      });
+    }
+
+    // 4. Agency Accreditation Letter
+    if (agentObj.accreditationLetter) {
+      list.push({
+        id: 'accreditationLetter',
+        name: 'Agency Accreditation Letter',
+        category: 'Agency Verification',
+        number: agentObj.employeeId,
+        path: agentObj.accreditationLetter
+      });
+    }
+
+    // 5. Legacy & alternative candidate document fields
+    const legacyCandidates = [
+      { path: agentObj.document, name: 'License / Verification Document' },
+      { path: agentObj.documentUrl, name: 'Document on File' },
+      { path: agentObj.verificationDocument, name: 'Verification Document' },
+      { path: agentObj.licenseDocument, name: 'License Document' },
+      { path: agentObj.certificate, name: 'Accreditation Certificate' },
+      { path: agentObj.licenseDoc, name: 'License Doc' },
+      { path: agentObj.licenseFile, name: 'License File' },
+      { path: agentObj.doc, name: 'Uploaded Doc' },
+      { path: agentObj.idProof, name: 'Identity Proof' },
+      { path: agentObj.identityDocument, name: 'Identity Document' }
+    ];
+
+    if (Array.isArray(agentObj.documents)) {
+      agentObj.documents.forEach((doc, idx) => {
+        if (!doc) return;
+        const p = typeof doc === 'string' ? doc.trim() : (doc.url || doc.path || doc.uri || '');
+        if (p) legacyCandidates.push({ path: p, name: doc.name || `Document ${idx + 1}` });
+      });
+    }
+
+    legacyCandidates.forEach((cand, idx) => {
+      const p = typeof cand.path === 'string' ? cand.path.trim() : (cand.path?.url || cand.path?.path || '');
+      if (p && !list.some(item => item.path === p)) {
+        list.push({
+          id: `legacy_${idx}`,
+          name: cand.name,
+          category: 'Supporting Documentation',
+          path: p
+        });
+      }
+    });
+
+    return list;
+  }, [agent, details]);
+
+  // Ensure activeDocIndex stays within bounds
+  useEffect(() => {
+    if (activeDocIndex >= documentsList.length && documentsList.length > 0) {
+      setActiveDocIndex(0);
+    }
+  }, [documentsList.length, activeDocIndex]);
+
+  const activeDoc = documentsList[activeDocIndex] || documentsList[0] || null;
+  const rawDoc = activeDoc?.path || null;
+
+  const candidates = useMemo(() => getMediaUrlCandidates(rawDoc, baseUrl), [rawDoc, baseUrl]);
+  const activeUrl = candidates[candidateIndex] || (rawDoc ? getMediaUrl(rawDoc, baseUrl) : null);
+
+  useEffect(() => {
+    setCandidateIndex(0);
+    setHasError(false);
+    setIsImgLoaded(false);
+    setZoom(1);
+    setRotation(0);
+  }, [rawDoc, activeDocIndex]);
+
+  const handleImgError = () => {
+    if (candidateIndex + 1 < candidates.length) {
+      setCandidateIndex(prev => prev + 1);
+      setIsImgLoaded(false);
+    } else {
+      setHasError(true);
+      setIsImgLoaded(false);
+    }
+  };
+
+  const handleImgLoad = () => {
+    setIsImgLoaded(true);
+    setHasError(false);
+  };
+
+  const isPdf = Boolean(rawDoc && (/\.pdf($|\?)/i.test(rawDoc) || rawDoc.toLowerCase().includes('application/pdf')));
+  const isImage = Boolean(rawDoc && !isPdf);
+
+  const docFileName = useMemo(() => {
+    if (!rawDoc) return 'document.png';
+    const clean = rawDoc.split('?')[0].replace(/\\/g, '/');
+    const parts = clean.split('/');
+    return parts[parts.length - 1] || 'Verification Document';
+  }, [rawDoc]);
+
+  const handleDownload = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const targetUrl = activeUrl || getMediaUrl(rawDoc, baseUrl);
+    if (!targetUrl) return;
+
+    try {
+      setDownloading(true);
+      toast.loading(`Downloading ${activeDoc?.name || 'document'}...`, { id: 'doc-download' });
+      const response = await fetch(targetUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = docFileName || 'document.png';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
+      toast.success(`${activeDoc?.name || 'Document'} downloaded successfully`, { id: 'doc-download' });
+    } catch (err) {
+      console.warn('Direct blob download fallback:', err);
+      try {
+        const link = document.createElement('a');
+        link.href = targetUrl;
+        link.setAttribute('download', docFileName || 'document.png');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.dismiss('doc-download');
+      } catch {
+        window.open(targetUrl, '_blank');
+        toast.dismiss('doc-download');
+      }
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  if (documentsList.length === 0) {
+    return (
+      <div style={{
+        background: '#faf8f5',
+        border: '1px solid var(--border-color)',
+        padding: '1.75rem 1.25rem',
+        borderRadius: '12px',
+        textAlign: 'center',
+        color: 'var(--text-secondary)'
+      }}>
+        <FileText size={42} style={{ color: 'var(--text-muted)', margin: '0 auto 0.75rem' }} />
+        <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.25rem', fontSize: '1rem', fontWeight: 700 }}>
+          No Verification Documents Uploaded
+        </h4>
+        <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)', margin: 0 }}>
+          This realtor has not uploaded any official identification or accreditation documents yet.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div style={{
+        background: '#faf8f5',
+        border: '1px solid var(--border-color)',
+        padding: '1.25rem',
+        borderRadius: '12px',
+        textAlign: 'center',
+        color: 'var(--text-secondary)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '1rem'
+      }}>
+        <div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', background: 'rgba(250, 179, 25, 0.12)', color: '#b47404', padding: '0.25rem 0.65rem', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+            <FileCheck size={14} /> Official Verification Documents ({documentsList.length} files attached)
+          </div>
+          <h4 style={{ color: 'var(--text-primary)', margin: '0 0 0.25rem', fontSize: '1.05rem', fontWeight: 700 }}>
+            {activeDoc?.name || 'Realtor Credentials'}
+          </h4>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+            {activeDoc?.category || 'Official licensing and accreditation document on file for this realtor.'}
+          </p>
+          {activeDoc?.number && (
+            <p style={{ fontSize: '0.78rem', color: '#b47404', fontWeight: 600, margin: '0.2rem 0 0' }}>
+              Reference ID: <code style={{ fontFamily: 'monospace', fontWeight: 700, background: 'rgba(250, 179, 25, 0.15)', padding: '0.1rem 0.35rem', borderRadius: '4px' }}>{activeDoc.number}</code>
+            </p>
+          )}
+          <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '0.25rem 0 0', fontFamily: 'monospace' }}>
+            File: {docFileName}
+          </p>
+        </div>
+
+        {/* Multi-Document Selector Pills */}
+        {documentsList.length > 1 && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            overflowX: 'auto',
+            padding: '0.4rem 0.6rem',
+            background: 'rgba(10, 31, 57, 0.04)',
+            borderRadius: '10px',
+            maxWidth: '100%',
+            scrollbarWidth: 'thin',
+            width: '100%',
+            justifyContent: 'center',
+            flexWrap: 'wrap'
+          }}>
+            {documentsList.map((doc, idx) => {
+              const isSelected = idx === activeDocIndex;
+              return (
+                <button
+                  key={doc.id || idx}
+                  type="button"
+                  onClick={() => setActiveDocIndex(idx)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    padding: '0.4rem 0.75rem',
+                    borderRadius: '8px',
+                    border: isSelected ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                    background: isSelected ? 'var(--primary)' : '#ffffff',
+                    color: isSelected ? '#0a1f39' : 'var(--text-secondary)',
+                    fontWeight: isSelected ? 700 : 500,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    boxShadow: isSelected ? '0 2px 6px rgba(250, 179, 25, 0.3)' : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <FileCheck size={13} />
+                  <span>{doc.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Preview Container */}
+        <div style={{ width: '100%', maxWidth: '420px', position: 'relative' }}>
+          {isPdf ? (
+            <div style={{
+              background: '#ffffff',
+              border: '1px solid var(--border-color)',
+              borderRadius: '10px',
+              padding: '1.5rem 1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '0.75rem',
+              boxShadow: 'var(--shadow-sm)'
+            }}>
+              <FileText size={48} style={{ color: '#ef4444' }} />
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                PDF Document Attached
+              </span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                {docFileName}
+              </span>
+            </div>
+          ) : isImage && !hasError ? (
+            <div
+              onClick={() => setShowLightbox(true)}
+              style={{
+                position: 'relative',
+                display: 'inline-block',
+                borderRadius: '10px',
+                overflow: 'hidden',
+                border: '1px solid var(--border-color)',
+                background: '#ffffff',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
+                cursor: 'pointer',
+                maxWidth: '100%'
+              }}
+              title="Click to view full size"
+            >
+              {!isImgLoaded && (
+                <div style={{ padding: '2.5rem 2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)' }}>
+                  <Loader2 size={24} className="animate-spin" />
+                  <span style={{ fontSize: '0.75rem' }}>Loading {activeDoc?.name || 'document'}...</span>
+                </div>
+              )}
+              <img
+                src={activeUrl}
+                alt={activeDoc?.name || 'Verification Document'}
+                onLoad={handleImgLoad}
+                onError={handleImgError}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '220px',
+                  objectFit: 'contain',
+                  display: isImgLoaded ? 'block' : 'none',
+                  transition: 'transform 0.2s ease',
+                  margin: '0 auto'
+                }}
+              />
+              {isImgLoaded && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '8px',
+                    right: '8px',
+                    background: 'rgba(10, 31, 57, 0.75)',
+                    color: '#ffffff',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    backdropFilter: 'blur(4px)'
+                  }}
+                >
+                  <Maximize2 size={11} /> Click to Enlarge
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Fallback Card if image failed across all candidate URLs */
+            <div style={{
+              background: '#ffffff',
+              border: '1px solid #fed7aa',
+              borderRadius: '10px',
+              padding: '1.25rem 1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '0.5rem',
+              boxShadow: 'var(--shadow-sm)'
+            }}>
+              <FileCheck size={38} style={{ color: '#ea580c' }} />
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                Document Stored on Server
+              </span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', wordBreak: 'break-all', textAlign: 'center' }}>
+                {docFileName}
+              </span>
+              <span style={{ fontSize: '0.72rem', color: '#c2410c', background: '#fff7ed', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
+                Click below to view or download directly
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Actions Bar */}
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => setShowLightbox(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}
+          >
+            <Eye size={14} /> View Document
+          </button>
+          <a
+            href={activeUrl || getMediaUrl(rawDoc, baseUrl)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-secondary btn-sm"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}
+          >
+            <ExternalLink size={14} /> Open in New Tab
+          </a>
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={downloading}
+            className="btn btn-ghost btn-sm"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', cursor: 'pointer' }}
+            title="Download Document"
+          >
+            {downloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            {downloading ? 'Downloading...' : 'Download'}
+          </button>
+        </div>
+      </div>
+
+      {/* In-App Full-Screen Document Lightbox Modal */}
+      {showLightbox && createPortal(
+        <div
+          className="modal-overlay"
+          style={{ zIndex: 1200, background: 'rgba(10, 31, 57, 0.88)', backdropFilter: 'blur(10px)' }}
+          onClick={() => setShowLightbox(false)}
+        >
+          <div
+            style={{
+              width: '92vw',
+              maxWidth: '920px',
+              height: '88vh',
+              background: '#ffffff',
+              borderRadius: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+              animation: 'slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Lightbox Header */}
+            <div style={{
+              padding: '0.85rem 1.25rem',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#faf8f5',
+              flexShrink: 0,
+              flexWrap: 'wrap',
+              gap: '0.5rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <FileCheck size={18} style={{ color: 'var(--primary)' }} />
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {activeDoc?.name || 'Realtor Document'}
+                  </h4>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {safeRenderText(agent?.name || details?.name)} • {docFileName}
+                    {documentsList.length > 1 && (
+                      <span style={{ marginLeft: '0.5rem', fontWeight: 600, color: 'var(--primary)' }}>
+                        ({activeDocIndex + 1} of {documentsList.length})
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                {documentsList.length > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginRight: '0.5rem' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setActiveDocIndex(prev => (prev > 0 ? prev - 1 : documentsList.length - 1))}
+                      title="Previous Document"
+                      style={{ padding: '0.25rem 0.55rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
+                    >
+                      <ChevronLeft size={13} /> Prev
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setActiveDocIndex(prev => (prev < documentsList.length - 1 ? prev + 1 : 0))}
+                      title="Next Document"
+                      style={{ padding: '0.25rem 0.55rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
+                    >
+                      Next <ChevronRight size={13} />
+                    </button>
+                  </div>
+                )}
+                {isImage && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm btn-icon"
+                      onClick={() => setZoom(prev => Math.min(prev + 0.25, 3))}
+                      title="Zoom In"
+                    >
+                      <ZoomIn size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm btn-icon"
+                      onClick={() => setZoom(prev => Math.max(prev - 0.25, 0.5))}
+                      title="Zoom Out"
+                    >
+                      <ZoomOut size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm btn-icon"
+                      onClick={() => setRotation(prev => (prev + 90) % 360)}
+                      title="Rotate Clockwise"
+                    >
+                      <RotateCw size={15} />
+                    </button>
+                    {(zoom !== 1 || rotation !== 0) && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => { setZoom(1); setRotation(0); }}
+                        style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm btn-icon"
+                  onClick={handleDownload}
+                  disabled={downloading}
+                  title="Download Document"
+                >
+                  {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                </button>
+                <a
+                  href={activeUrl || getMediaUrl(rawDoc, baseUrl)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-secondary btn-sm btn-icon"
+                  title="Open in New Tab"
+                >
+                  <ExternalLink size={15} />
+                </a>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm btn-icon"
+                  onClick={() => setShowLightbox(false)}
+                  title="Close Viewer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Lightbox Body */}
+            <div style={{
+              flex: '1 1 0%',
+              minHeight: 0,
+              overflow: 'auto',
+              padding: '1.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: '#0f172a'
+            }}>
+              {isPdf ? (
+                <iframe
+                  src={activeUrl || getMediaUrl(rawDoc, baseUrl)}
+                  title="License Document PDF"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: 'none',
+                    borderRadius: '8px',
+                    background: '#ffffff'
+                  }}
+                />
+              ) : (
+                <img
+                  src={activeUrl || getMediaUrl(rawDoc, baseUrl)}
+                  alt={activeDoc?.name || 'Document Preview'}
+                  onError={handleImgError}
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    objectFit: 'contain',
+                    borderRadius: '8px',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                    transform: `scale(${zoom}) rotate(${rotation}deg)`,
+                    transition: 'transform 0.2s ease',
+                    background: '#ffffff'
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+};
 
 export default function RealtorManagement() {
   const {
@@ -41,7 +817,7 @@ export default function RealtorManagement() {
     addAuditLog: onAddAuditLog
   } = useStateContext();
 
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.1.98:5000/api';
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://mobappssolutiondevelopment.com/kleverProp/api';
 
   // API Agent List & State
   const [agentsList, setAgentsList] = useState([]);
@@ -65,7 +841,7 @@ export default function RealtorManagement() {
   // Modals State
   const [selectedAgent, setSelectedAgent] = useState(null); // Basic agent object from row
   const [agentDetails, setAgentDetails] = useState(null); // Full { agent, leads, stats } from GET /admin/agents/:id
-  const [activeViewTab, setActiveViewTab] = useState('leads'); // 'leads' | 'credentials'
+  const [activeViewTab, setActiveViewTab] = useState('credentials'); // 'credentials' (default) | 'leads'
   const [leadStatusFilter, setLeadStatusFilter] = useState('All'); // 'All' | 'pending' | 'contacted' | 'won'
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [editingAgent, setEditingAgent] = useState(null); // For Edit Agent Modal
@@ -84,6 +860,8 @@ export default function RealtorManagement() {
   const [showRejectForm, setShowRejectForm] = useState(false);
 
   // Edit Form Fields (PUT /admin/agents/edit/:id or DELETE /admin/agents/edit/:id)
+  const [agenciesList, setAgenciesList] = useState([]);
+  const [agenciesLoading, setAgenciesLoading] = useState(false);
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formPhone, setFormPhone] = useState('');
@@ -98,13 +876,7 @@ export default function RealtorManagement() {
   // Search debounce ref
   const searchTimeoutRef = useRef(null);
 
-  // Helper to format profile image & document URLs
-  const getMediaUrl = (mediaPath) => {
-    if (!mediaPath) return null;
-    if (mediaPath.startsWith('http') || mediaPath.startsWith('blob:')) return mediaPath;
-    const serverUrl = baseUrl.replace(/\/api$/, '');
-    return `${serverUrl}${mediaPath.startsWith('/') ? '' : '/'}${mediaPath}`;
-  };
+
 
   // Normalize status string to lowercase ('approved', 'pending', 'rejected', 'suspended')
   const normalizeStatus = (status) => {
@@ -116,21 +888,41 @@ export default function RealtorManagement() {
     return 'pending';
   };
 
-  // Status Badge UI (View-Only Badge for Verification Status)
-  const renderStatusBadge = (status) => {
-    const norm = normalizeStatus(status);
-    if (norm === 'approved') {
+  // Status Badge UI (Clean text display without background fill)
+  const renderStatusBadge = (status, isActive) => {
+    if (isActive === false) {
       return (
         <span
-          className="badge badge-success"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: '0.35rem',
-            padding: '0.35rem 0.75rem',
-            borderRadius: '20px',
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
             fontWeight: 600,
-            fontSize: '0.8rem'
+            fontSize: '0.8125rem',
+            color: 'hsl(350, 89%, 45%)'
+          }}
+        >
+          <UserX size={13} /> Inactive
+        </span>
+      );
+    }
+    const norm = normalizeStatus(status);
+    if (norm === 'approved') {
+      return (
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            fontWeight: 600,
+            fontSize: '0.8125rem',
+            color: 'hsl(142, 70%, 35%)'
           }}
         >
           <CheckCircle size={13} /> Approved
@@ -140,15 +932,16 @@ export default function RealtorManagement() {
     if (norm === 'pending') {
       return (
         <span
-          className="badge badge-warning"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: '0.35rem',
-            padding: '0.35rem 0.75rem',
-            borderRadius: '20px',
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
             fontWeight: 600,
-            fontSize: '0.8rem'
+            fontSize: '0.8125rem',
+            color: 'hsl(38, 92%, 40%)'
           }}
         >
           <Clock size={13} /> Pending
@@ -158,35 +951,56 @@ export default function RealtorManagement() {
     if (norm === 'suspended') {
       return (
         <span
-          className="badge badge-danger"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: '0.35rem',
-            padding: '0.35rem 0.75rem',
-            borderRadius: '20px',
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
             fontWeight: 600,
-            fontSize: '0.8rem'
+            fontSize: '0.8125rem',
+            color: 'hsl(350, 89%, 45%)'
           }}
         >
           <UserX size={13} /> Suspended
         </span>
       );
     }
+    if (norm === 'rejected') {
+      return (
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            fontWeight: 600,
+            fontSize: '0.8125rem',
+            color: 'hsl(350, 89%, 45%)'
+          }}
+        >
+          <XCircle size={13} /> Rejected
+        </span>
+      );
+    }
     return (
       <span
-        className="badge badge-danger"
         style={{
           display: 'inline-flex',
           alignItems: 'center',
           gap: '0.35rem',
-          padding: '0.35rem 0.75rem',
-          borderRadius: '20px',
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
           fontWeight: 600,
-          fontSize: '0.8rem'
+          fontSize: '0.8125rem',
+          color: isActive !== false ? 'hsl(142, 70%, 35%)' : 'hsl(350, 89%, 45%)'
         }}
       >
-        <XCircle size={13} /> Rejected
+        {isActive !== false ? <CheckCircle size={13} /> : <UserX size={13} />} {isActive !== false ? 'Active' : 'Inactive'}
       </span>
     );
   };
@@ -194,16 +1008,108 @@ export default function RealtorManagement() {
   // Lead Status Badge UI
   const renderLeadStatusBadge = (status) => {
     const s = (status || '').toLowerCase();
-    if (s === 'contacted') {
-      return <span className="badge badge-info" style={{ fontSize: '0.72rem', textTransform: 'capitalize' }}>Contacted</span>;
+    if (s === 'approved') {
+      return <span className="badge badge-info" style={{ fontSize: '0.72rem', textTransform: 'capitalize' }}>Approved</span>;
     }
-    if (s === 'won') {
-      return <span className="badge badge-success" style={{ fontSize: '0.72rem', textTransform: 'capitalize' }}>Won</span>;
+    if (s === 'completed' || s === 'won') {
+      return <span className="badge badge-success" style={{ fontSize: '0.72rem', textTransform: 'capitalize' }}>{s === 'won' ? 'Won' : 'Completed'}</span>;
     }
     if (s === 'pending') {
       return <span className="badge badge-warning" style={{ fontSize: '0.72rem', textTransform: 'capitalize' }}>Pending</span>;
     }
+    if (s === 'rejected') {
+      return <span className="badge badge-danger" style={{ fontSize: '0.72rem', textTransform: 'capitalize' }}>Rejected</span>;
+    }
+    if (s === 'contacted') {
+      return <span className="badge badge-info" style={{ fontSize: '0.72rem', textTransform: 'capitalize' }}>Contacted</span>;
+    }
     return <span className="badge badge-secondary" style={{ fontSize: '0.72rem', textTransform: 'capitalize' }}>{status || 'Inquiry'}</span>;
+  };
+
+  // AI Lead Sheet Quality Badge UI
+  const renderLeadQualityBadge = (quality) => {
+    const q = (quality || '').toUpperCase();
+    if (q === 'HOT') {
+      return (
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.25rem',
+            padding: '0.15rem 0.55rem',
+            borderRadius: '9999px',
+            fontSize: '0.68rem',
+            fontWeight: 700,
+            background: 'rgba(239, 68, 68, 0.12)',
+            color: '#dc2626',
+            border: '1px solid rgba(239, 68, 68, 0.28)',
+            letterSpacing: '0.03em'
+          }}
+        >
+          <Flame size={12} style={{ color: '#ef4444' }} /> HOT LEAD
+        </span>
+      );
+    }
+    if (q === 'WARM') {
+      return (
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.25rem',
+            padding: '0.15rem 0.55rem',
+            borderRadius: '9999px',
+            fontSize: '0.68rem',
+            fontWeight: 700,
+            background: 'rgba(245, 158, 11, 0.12)',
+            color: '#d97706',
+            border: '1px solid rgba(245, 158, 11, 0.28)',
+            letterSpacing: '0.03em'
+          }}
+        >
+          <Sparkles size={12} style={{ color: '#f59e0b' }} /> WARM LEAD
+        </span>
+      );
+    }
+    if (q === 'COLD') {
+      return (
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.25rem',
+            padding: '0.15rem 0.55rem',
+            borderRadius: '9999px',
+            fontSize: '0.68rem',
+            fontWeight: 700,
+            background: 'rgba(100, 116, 139, 0.12)',
+            color: '#475569',
+            border: '1px solid rgba(100, 116, 139, 0.28)',
+            letterSpacing: '0.03em'
+          }}
+        >
+          COLD LEAD
+        </span>
+      );
+    }
+    return (
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.25rem',
+          padding: '0.15rem 0.55rem',
+          borderRadius: '9999px',
+          fontSize: '0.68rem',
+          fontWeight: 700,
+          background: 'rgba(10, 31, 57, 0.08)',
+          color: 'var(--text-secondary)',
+          border: '1px solid rgba(10, 31, 57, 0.15)'
+        }}
+      >
+        <Sparkles size={11} /> {quality || 'AI ANALYZED'}
+      </span>
+    );
   };
 
   // 1. GET ALL AGENTS WITH PAGINATION & STATUS FILTER: /admin/agents?status=pending,approved,rejected,suspended
@@ -247,20 +1153,30 @@ export default function RealtorManagement() {
       const mapped = rawAgents.map(a => {
         const idVal = a._id || a.id;
         const normStatus = normalizeStatus(a.status);
+        const nameVal = safeRenderText(a.name, '—');
+        const emailVal = safeRenderText(a.email, '—');
+        const phoneVal = safeRenderText(a.phone, '');
+        const agencyVal = safeRenderText(a.agencyName || a.agency, '—');
+        const licenseVal = safeRenderText(a.licenseNumber || a.liceneseNumber || a.license, '—');
+
+        const isActiveVal = a.isActive !== undefined ? Boolean(a.isActive) : (a.status ? normStatus === 'approved' : true);
+
         return {
           _id: idVal,
           id: idVal,
-          name: a.name || '—',
-          email: a.email || '—',
-          phone: a.phone || '',
-          agency: a.agencyName || a.agency || '—',
-          agencyName: a.agencyName || a.agency || '—',
-          license: a.licenseNumber || a.liceneseNumber || a.license || '—',
-          licenseNumber: a.licenseNumber || a.liceneseNumber || a.license || '—',
+          name: nameVal,
+          email: emailVal,
+          phone: phoneVal,
+          agency: agencyVal,
+          agencyName: agencyVal,
+          license: licenseVal,
+          licenseNumber: licenseVal,
           status: normStatus,
           rawStatus: a.status,
-          profileImage: a.profileImage || '',
-          document: a.document || '',
+          isActive: isActiveVal,
+          tier: a.tier || a.agency?.tier || null,
+          profileImage: a.profileImage || a.profile_image || a.profilePic || a.avatar || a.image || a.photo || a.agentImage || (a.user?.profileImage) || (a.user?.avatar) || (a.userId?.profileImage) || '',
+          document: a.document || a.documentUrl || a.verificationDocument || a.licenseDocument || a.licenseDoc || a.certificate || a.idProof || a.doc || (Array.isArray(a.documents) ? a.documents[0] : a.documents) || (a.user?.document) || (a.user?.verificationDocument) || (typeof a.license === 'string' && /\.(png|jpg|jpeg|webp|pdf)$/i.test(a.license) ? a.license : '') || '',
           verificationDate: a.verificationDate || a.updatedAt || null,
           createdAt: a.createdAt || null,
           rejectionReason: a.rejectionReason || '',
@@ -281,10 +1197,48 @@ export default function RealtorManagement() {
     }
   }, [adminUser?.token, baseUrl, currentPage, limit, statusFilter, searchTerm]);
 
+  // Fetch Agencies list from API for dropdown selection
+  const fetchAgencies = useCallback(async () => {
+    if (!adminUser?.token) return;
+    try {
+      setAgenciesLoading(true);
+      const headers = { Authorization: `Bearer ${adminUser.token}` };
+      const candidateEndpoints = [
+        `${baseUrl}/admin/agency`,
+        `${baseUrl}/admin/agencies`,
+        `${baseUrl}/admin/agency/all`,
+        `${baseUrl}/agency`
+      ];
+
+      let rawAgencies = null;
+      for (const endpoint of candidateEndpoints) {
+        try {
+          const response = await axios.get(endpoint, { headers });
+          const candidateData = response.data?.data?.agencies || response.data?.agencies || response.data?.data || response.data;
+          if (Array.isArray(candidateData)) {
+            rawAgencies = candidateData;
+            break;
+          }
+        } catch {
+          // continue fallback
+        }
+      }
+
+      if (Array.isArray(rawAgencies)) {
+        setAgenciesList(rawAgencies);
+      }
+    } catch (err) {
+      console.error('Failed to fetch agencies for dropdown:', err);
+    } finally {
+      setAgenciesLoading(false);
+    }
+  }, [adminUser?.token, baseUrl]);
+
   // Initial Fetch & Dependency Triggers
   useEffect(() => {
     fetchAgents(currentPage, limit, statusFilter, searchTerm);
-  }, [adminUser?.token, currentPage, limit, statusFilter]);
+    fetchAgencies();
+  }, [adminUser?.token, currentPage, limit, statusFilter, fetchAgencies]);
 
   // Search input change with debouncing
   const handleSearchChange = (e) => {
@@ -322,13 +1276,13 @@ export default function RealtorManagement() {
   };
 
   // 2. GET AGENT BY ID: /admin/agents/:id (Loads detailed Agent + Leads + Stats)
-  const handleInspectAgent = async (agent, defaultTab = 'leads') => {
+  const handleInspectAgent = async (agent, defaultTab = 'credentials') => {
     setSelectedAgent(agent);
     setAgentDetails(null);
     setShowRejectForm(false);
     setRejectReason('');
     setLeadStatusFilter('All');
-    setActiveViewTab(normalizeStatus(agent.status) === 'pending' ? 'credentials' : defaultTab);
+    setActiveViewTab(defaultTab);
     setDrawerLoading(true);
 
     const agentId = agent._id || agent.id;
@@ -512,16 +1466,19 @@ export default function RealtorManagement() {
   // 5. UPDATE AGENT: /admin/agents/edit/:id
   const handleEditClick = (agent) => {
     setEditingAgent(agent);
-    setFormName(agent.name !== '—' ? (agent.name || '') : '');
-    setFormEmail(agent.email !== '—' ? (agent.email || '') : '');
-    setFormPhone(agent.phone || '');
-    setFormAgencyName(agent.agencyName !== '—' ? (agent.agencyName || agent.agency || '') : '');
-    setFormLicenseNumber(agent.licenseNumber !== '—' ? (agent.licenseNumber || agent.license || '') : '');
+    setFormName(agent.name !== '—' ? safeRenderText(agent.name, '') : '');
+    setFormEmail(agent.email !== '—' ? safeRenderText(agent.email, '') : '');
+    setFormPhone(safeRenderText(agent.phone, ''));
+    setFormAgencyName(agent.agencyName !== '—' ? safeRenderText(agent.agencyName || agent.agency, '') : '');
+    setFormLicenseNumber(agent.licenseNumber !== '—' ? safeRenderText(agent.licenseNumber || agent.license, '') : '');
     setFormStatus(normalizeStatus(agent.status));
     setFormProfileImageFile(null);
     setFormProfileImagePreview(getMediaUrl(agent.profileImage) || '');
     setFormDocumentFile(null);
     setFormDocumentName(agent.document ? 'Current document on file' : '');
+    if (agenciesList.length === 0) {
+      fetchAgencies();
+    }
   };
 
   const handleProfileImageFileChange = (e) => {
@@ -698,12 +1655,24 @@ export default function RealtorManagement() {
   };
 
   const detailedAgent = agentDetails?.agent || agentDetails || selectedAgent || {};
+  const agentTier = (
+    (detailedAgent.tier && typeof detailedAgent.tier === 'object' ? detailedAgent.tier : null) ||
+    (selectedAgent?.tier && typeof selectedAgent.tier === 'object' ? selectedAgent.tier : null) ||
+    (detailedAgent.agency?.tier && typeof detailedAgent.agency.tier === 'object' ? detailedAgent.agency.tier : null) ||
+    (selectedAgent?.agency?.tier && typeof selectedAgent.agency.tier === 'object' ? selectedAgent.agency.tier : null) ||
+    (detailedAgent.raw?.tier && typeof detailedAgent.raw.tier === 'object' ? detailedAgent.raw.tier : null) ||
+    (selectedAgent?.raw?.tier && typeof selectedAgent.raw.tier === 'object' ? selectedAgent.raw.tier : null) ||
+    (agentDetails?.tier && typeof agentDetails.tier === 'object' ? agentDetails.tier : null) ||
+    (typeof detailedAgent.tier === 'string' ? { name: detailedAgent.tier } : null) ||
+    (typeof selectedAgent?.tier === 'string' ? { name: selectedAgent.tier } : null)
+  );
   const leadsList = Array.isArray(agentDetails?.leads) ? agentDetails.leads : [];
-  const statsData = agentDetails?.stats || {
-    totalLeads: leadsList.length,
-    pendingLeads: leadsList.filter(l => (l.status || '').toLowerCase() === 'pending').length,
-    contactedLeads: leadsList.filter(l => (l.status || '').toLowerCase() === 'contacted').length,
-    wonLeads: leadsList.filter(l => (l.status || '').toLowerCase() === 'won').length
+  const statsData = {
+    totalLeads: agentDetails?.stats?.totalLeads ?? leadsList.length,
+    pendingLeads: agentDetails?.stats?.pendingLeads ?? leadsList.filter(l => (l.status || '').toLowerCase() === 'pending').length,
+    approvedLeads: agentDetails?.stats?.approvedLeads ?? leadsList.filter(l => (l.status || '').toLowerCase() === 'approved').length,
+    completedLeads: agentDetails?.stats?.completedLeads ?? leadsList.filter(l => (l.status || '').toLowerCase() === 'completed' || (l.status || '').toLowerCase() === 'won').length,
+    rejectedLeads: agentDetails?.stats?.rejectedLeads ?? leadsList.filter(l => (l.status || '').toLowerCase() === 'rejected').length
   };
 
   const filteredLeads = leadsList.filter(l => {
@@ -801,6 +1770,10 @@ export default function RealtorManagement() {
           animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
         }
 
+        .realtor-view-modal .modal-header {
+          flex-shrink: 0 !important;
+        }
+
         .realtor-modal-body {
           padding: 1.25rem !important;
           display: flex !important;
@@ -808,19 +1781,27 @@ export default function RealtorManagement() {
           gap: 1.25rem !important;
           overflow-y: auto !important;
           -webkit-overflow-scrolling: touch !important;
-          flex: 1 !important;
+          flex: 1 1 0% !important;
+          min-height: 0 !important;
         }
 
         /* Navigation Tabs with fixed alignment & permanent underline on active */
         .realtor-tabs-header {
-          display: flex;
-          align-items: stretch;
-          border-bottom: 1px solid var(--border-color);
-          background: #faf8f5;
-          padding: 0 1.25rem;
-          gap: 0.5rem;
-          overflow-x: auto;
-          -webkit-overflow-scrolling: touch;
+          display: flex !important;
+          align-items: stretch !important;
+          flex-shrink: 0 !important;
+          min-height: 48px !important;
+          border-bottom: 1px solid var(--border-color) !important;
+          background: #faf8f5 !important;
+          padding: 0 1.25rem !important;
+          gap: 0.5rem !important;
+          overflow-x: auto !important;
+          overflow-y: hidden !important;
+          -webkit-overflow-scrolling: touch !important;
+        }
+
+        .realtor-view-modal .modal-footer {
+          flex-shrink: 0 !important;
         }
 
         .realtor-tab-btn {
@@ -841,6 +1822,7 @@ export default function RealtorManagement() {
           margin-bottom: -1px;
           font-family: inherit;
           box-sizing: border-box;
+          flex-shrink: 0;
         }
 
         .realtor-tab-btn:hover {
@@ -875,7 +1857,7 @@ export default function RealtorManagement() {
 
         .realtor-stats-grid {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(5, 1fr);
           gap: 0.75rem;
         }
 
@@ -919,7 +1901,7 @@ export default function RealtorManagement() {
             font-size: 0.8125rem !important;
           }
           .realtor-stats-grid {
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
           }
           .realtor-view-modal {
             width: 95vw !important;
@@ -943,8 +1925,10 @@ export default function RealtorManagement() {
             gap: 0.85rem !important;
           }
           .realtor-tabs-header {
-            padding: 0 0.5rem;
-            gap: 0.25rem;
+            padding: 0 0.5rem !important;
+            gap: 0.25rem !important;
+            flex-shrink: 0 !important;
+            min-height: 44px !important;
           }
           .realtor-tab-btn {
             flex: 1;
@@ -1066,7 +2050,7 @@ export default function RealtorManagement() {
                 <th>Agent Profile</th>
                 <th>Brokerage Firm</th>
                 <th>License ID</th>
-                <th>Verification Status</th>
+                <th>Status</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
@@ -1082,7 +2066,6 @@ export default function RealtorManagement() {
                 </tr>
               ) : agentsList.length > 0 ? (
                 agentsList.map((agent) => {
-                  const avatarUrl = getMediaUrl(agent.profileImage);
                   const isRowActioning = actionLoading === (agent._id || agent.id);
                   const normStatus = normalizeStatus(agent.status);
 
@@ -1090,45 +2073,16 @@ export default function RealtorManagement() {
                     <tr key={agent._id || agent.id}>
                       <td>
                         <div className="flex-align-center" style={{ gap: '0.75rem' }}>
-                          {avatarUrl ? (
-                            <img
-                              src={avatarUrl}
-                              alt={agent.name}
-                              style={{
-                                width: '38px',
-                                height: '38px',
-                                borderRadius: '50%',
-                                objectFit: 'cover',
-                                border: '2px solid var(--primary)',
-                                flexShrink: 0
-                              }}
-                              onError={(e) => {
-                                e.target.onerror = null;
-                                e.target.style.display = 'none';
-                              }}
-                            />
-                          ) : (
-                            <div style={{
-                              width: '38px',
-                              height: '38px',
-                              borderRadius: '50%',
-                              background: 'rgba(250, 179, 25, 0.12)',
-                              border: '2px solid var(--primary)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontWeight: 700,
-                              color: '#b47404',
-                              flexShrink: 0
-                            }}>
-                              {agent.name && agent.name !== '—' ? agent.name.charAt(0).toUpperCase() : 'A'}
-                            </div>
-                          )}
+                          <RealtorAvatar
+                            src={agent.profileImage}
+                            name={agent.name}
+                            size={38}
+                          />
                           <div>
-                            <p style={{ fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>{agent.name}</p>
-                            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>{agent.email}</p>
+                            <p style={{ fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>{safeRenderText(agent.name)}</p>
+                            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>{safeRenderText(agent.email)}</p>
                             {agent.phone && (
-                              <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: 0 }}>{agent.phone}</p>
+                              <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: 0 }}>{safeRenderText(agent.phone, '')}</p>
                             )}
                           </div>
                         </div>
@@ -1136,13 +2090,12 @@ export default function RealtorManagement() {
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                           <Building size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                          <span style={{ fontWeight: 500 }}>{agent.agency || agent.agencyName}</span>
+                          <span style={{ fontWeight: 500 }}>{safeRenderText(agent.agency || agent.agencyName)}</span>
                         </div>
                       </td>
-                      <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{agent.license || agent.licenseNumber}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{safeRenderText(agent.license || agent.licenseNumber)}</td>
                       <td>
-                        {/* Verification Status: View-Only Badge */}
-                        {renderStatusBadge(agent.status)}
+                        {renderStatusBadge(agent.status, agent.isActive)}
                       </td>
                       <td>
                         <div className="realtor-actions-cell">
@@ -1159,9 +2112,9 @@ export default function RealtorManagement() {
                           ) : (
                             <button
                               className="btn btn-secondary btn-sm"
-                              onClick={() => handleInspectAgent(agent, 'leads')}
+                              onClick={() => handleInspectAgent(agent, 'credentials')}
                               style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-                              title="View Leads & Profile"
+                              title="View Profile, Agency & Credentials"
                             >
                               <Eye size={13} />
                               View
@@ -1231,7 +2184,6 @@ export default function RealtorManagement() {
             </div>
           ) : agentsList.length > 0 ? (
             agentsList.map((agent) => {
-              const avatarUrl = getMediaUrl(agent.profileImage);
               const isRowActioning = actionLoading === (agent._id || agent.id);
               const normStatus = normalizeStatus(agent.status);
 
@@ -1249,44 +2201,15 @@ export default function RealtorManagement() {
                     boxShadow: 'var(--shadow-sm)'
                   }}
                 >
-                  {/* Card Header: Avatar, Name, Email, Status View Badge */}
+                  {/* Card Header: Avatar, Name, Email & Status Badge */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                      {avatarUrl ? (
-                        <img
-                          src={avatarUrl}
-                          alt={agent.name}
-                          style={{
-                            width: '42px',
-                            height: '42px',
-                            borderRadius: '50%',
-                            objectFit: 'cover',
-                            border: '2px solid var(--primary)',
-                            flexShrink: 0
-                          }}
-                          onError={(e) => {
-                            e.target.onerror = null;
-                            e.target.style.display = 'none';
-                          }}
-                        />
-                      ) : (
-                        <div style={{
-                          width: '42px',
-                          height: '42px',
-                          borderRadius: '50%',
-                          background: 'rgba(250, 179, 25, 0.12)',
-                          border: '2px solid var(--primary)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: 700,
-                          color: '#b47404',
-                          fontSize: '1rem',
-                          flexShrink: 0
-                        }}>
-                          {agent.name && agent.name !== '—' ? agent.name.charAt(0).toUpperCase() : 'A'}
-                        </div>
-                      )}
+                      <RealtorAvatar
+                        src={agent.profileImage}
+                        name={agent.name}
+                        size={42}
+                        fontSize="1rem"
+                      />
                       <div>
                         <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                           {agent.name}
@@ -1301,11 +2224,7 @@ export default function RealtorManagement() {
                         )}
                       </div>
                     </div>
-
-                    <div>
-                      {/* View-Only Status Badge */}
-                      {renderStatusBadge(agent.status)}
-                    </div>
+                    {renderStatusBadge(agent.status, agent.isActive)}
                   </div>
 
                   {/* Agency & License Grid */}
@@ -1320,11 +2239,11 @@ export default function RealtorManagement() {
                   }}>
                     <div>
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>Brokerage Firm</span>
-                      <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{agent.agency || agent.agencyName || '—'}</span>
+                      <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{safeRenderText(agent.agency || agent.agencyName, '—')}</span>
                     </div>
                     <div>
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>License ID</span>
-                      <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-primary)' }}>{agent.license || agent.licenseNumber || '—'}</span>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-primary)' }}>{safeRenderText(agent.license || agent.licenseNumber, '—')}</span>
                     </div>
                   </div>
 
@@ -1349,8 +2268,9 @@ export default function RealtorManagement() {
                     ) : (
                       <button
                         className="btn btn-secondary btn-sm"
-                        onClick={() => handleInspectAgent(agent, 'leads')}
+                        onClick={() => handleInspectAgent(agent, 'credentials')}
                         style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}
+                        title="View Profile, Agency & Credentials"
                       >
                         <Eye size={14} />
                         View
@@ -1491,7 +2411,7 @@ export default function RealtorManagement() {
             className="modal-content realtor-view-modal"
             style={{
               width: '100%',
-              maxWidth: '780px',
+              maxWidth: '820px',
               maxHeight: '90vh',
               display: 'flex',
               flexDirection: 'column',
@@ -1500,42 +2420,39 @@ export default function RealtorManagement() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="modal-header" style={{ padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)' }}>
+            <div className="modal-header" style={{ padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                <div style={{
-                  width: '42px',
-                  height: '42px',
-                  borderRadius: '50%',
-                  background: 'rgba(250, 179, 25, 0.12)',
-                  border: '2px solid var(--primary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 700,
-                  color: '#b47404',
-                  overflow: 'hidden',
-                  flexShrink: 0
-                }}>
-                  {getMediaUrl(detailedAgent.profileImage || selectedAgent.profileImage) ? (
-                    <img
-                      src={getMediaUrl(detailedAgent.profileImage || selectedAgent.profileImage)}
-                      alt={detailedAgent.name || selectedAgent.name}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      onError={(e) => { e.target.style.display = 'none'; }}
-                    />
-                  ) : (
-                    (detailedAgent.name || selectedAgent.name || 'A').charAt(0).toUpperCase()
-                  )}
-                </div>
+                <RealtorAvatar
+                  src={detailedAgent.profileImage || selectedAgent.profileImage}
+                  name={detailedAgent.name || selectedAgent.name}
+                  size={46}
+                  fontSize="1.15rem"
+                />
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
                     <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-primary)' }}>
-                      {detailedAgent.name || selectedAgent.name}
+                      {safeRenderText(detailedAgent.name || selectedAgent.name)}
                     </h3>
-                    {renderStatusBadge(detailedAgent.status || selectedAgent.status)}
+                    {renderStatusBadge(detailedAgent.status || selectedAgent.status, detailedAgent.isActive !== undefined ? detailedAgent.isActive : selectedAgent.isActive)}
+                    {detailedAgent.isEmailVerified && (
+                      <span className="badge badge-success" style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <CheckCircle size={11} /> Email Verified
+                      </span>
+                    )}
+                    {detailedAgent.isCoveredByAgency && (
+                      <span className="badge badge-warning" style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem' }}>
+                        Agency Covered
+                      </span>
+                    )}
                   </div>
-                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                    {detailedAgent.agencyName || detailedAgent.agency || selectedAgent.agency || selectedAgent.agencyName} • License: <span style={{ fontFamily: 'monospace' }}>{detailedAgent.licenseNumber || detailedAgent.liceneseNumber || detailedAgent.license || selectedAgent.license}</span>
+                  <p style={{ margin: '0.2rem 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {safeRenderText(detailedAgent.agency?.name || detailedAgent.agencyName || detailedAgent.agency || selectedAgent.agency?.name || selectedAgent.agency || selectedAgent.agencyName)}
+                    {(detailedAgent.aeiNumber || detailedAgent.licenseNumber || detailedAgent.employeeId || detailedAgent.idNumber) && (
+                      <> • ID/AEI: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{detailedAgent.aeiNumber || detailedAgent.licenseNumber || detailedAgent.employeeId || detailedAgent.idNumber}</span></>
+                    )}
+                    {agentTier?.name && (
+                      <> • <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{agentTier.name}</span></>
+                    )}
                   </p>
                 </div>
               </div>
@@ -1550,7 +2467,17 @@ export default function RealtorManagement() {
             </div>
 
             {/* Sub-header Navigation Tabs */}
-            <div className="realtor-tabs-header">
+            <div className="realtor-tabs-header" style={{ flexShrink: 0, minHeight: '48px' }}>
+              <button
+                type="button"
+                onClick={() => setActiveViewTab('credentials')}
+                className={`realtor-tab-btn ${activeViewTab === 'credentials' ? 'active' : 'inactive'}`}
+              >
+                <FileCheck size={16} />
+                <span className="realtor-tab-text-full">Profile, Agency & Credentials</span>
+                <span className="realtor-tab-text-mobile">Credentials</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setActiveViewTab('leads')}
@@ -1563,27 +2490,17 @@ export default function RealtorManagement() {
                   {statsData.totalLeads}
                 </span>
               </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveViewTab('credentials')}
-                className={`realtor-tab-btn ${activeViewTab === 'credentials' ? 'active' : 'inactive'}`}
-              >
-                <FileCheck size={16} />
-                <span className="realtor-tab-text-full">License & Credentials Review</span>
-                <span className="realtor-tab-text-mobile">Credentials</span>
-              </button>
             </div>
 
             {/* Modal Body */}
-            <div className="modal-body realtor-modal-body">
+            <div className="modal-body realtor-modal-body" style={{ flex: '1 1 0%', minHeight: 0, overflowY: 'auto' }}>
               {drawerLoading ? (
                 <div style={{ padding: '3.5rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                   <Loader2 size={26} className="animate-spin" style={{ margin: '0 auto 0.75rem' }} />
                   <p style={{ margin: 0, fontSize: '0.875rem' }}>Retrieving live agent details, client leads & stats from server...</p>
                 </div>
               ) : activeViewTab === 'leads' ? (
-                /* TAB 1: CLIENT LEADS & INQUIRIES */
+                /* TAB 2: CLIENT LEADS & INQUIRIES */
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
                   {/* Lead Stats Bar */}
                   <div className="realtor-stats-grid">
@@ -1596,12 +2513,16 @@ export default function RealtorManagement() {
                       <p style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0.2rem 0 0', color: '#d97706' }}>{statsData.pendingLeads}</p>
                     </div>
                     <div style={{ background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(14, 165, 233, 0.25)', borderRadius: '10px', padding: '0.85rem 1rem', textAlign: 'center' }}>
-                      <span style={{ fontSize: '0.7rem', color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>Contacted</span>
-                      <p style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0.2rem 0 0', color: '#0284c7' }}>{statsData.contactedLeads}</p>
+                      <span style={{ fontSize: '0.7rem', color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>Approved</span>
+                      <p style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0.2rem 0 0', color: '#0284c7' }}>{statsData.approvedLeads}</p>
                     </div>
                     <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '10px', padding: '0.85rem 1rem', textAlign: 'center' }}>
-                      <span style={{ fontSize: '0.7rem', color: '#047857', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>Won</span>
-                      <p style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0.2rem 0 0', color: '#059669' }}>{statsData.wonLeads}</p>
+                      <span style={{ fontSize: '0.7rem', color: '#047857', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>Completed</span>
+                      <p style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0.2rem 0 0', color: '#059669' }}>{statsData.completedLeads}</p>
+                    </div>
+                    <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '10px', padding: '0.85rem 1rem', textAlign: 'center' }}>
+                      <span style={{ fontSize: '0.7rem', color: '#b91c1c', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>Rejected</span>
+                      <p style={{ fontSize: '1.4rem', fontWeight: 800, margin: '0.2rem 0 0', color: '#dc2626' }}>{statsData.rejectedLeads}</p>
                     </div>
                   </div>
 
@@ -1611,7 +2532,7 @@ export default function RealtorManagement() {
                       Inquiries List ({filteredLeads.length})
                     </span>
                     <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                      {['All', 'pending', 'contacted', 'won'].map(st => (
+                      {['All', 'pending', 'approved', 'completed', 'rejected'].map(st => (
                         <button
                           key={st}
                           type="button"
@@ -1627,9 +2548,15 @@ export default function RealtorManagement() {
 
                   {/* Leads Cards */}
                   {filteredLeads.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                       {filteredLeads.map((lead) => {
-                        const userImg = getMediaUrl(lead.user?.profileImage);
+                        const clientUser = lead.user || lead.userId || {};
+                        const clientName = clientUser.name || lead.name || 'Anonymous Client';
+                        const clientEmail = clientUser.email || lead.email || '';
+                        const clientPhone = clientUser.phone || lead.phone || '';
+                        const userImg = getMediaUrl(clientUser.profileImage || lead.profileImage);
+                        const aiSheet = lead.aiLeadSheet;
+
                         return (
                           <div
                             key={lead._id || lead.id}
@@ -1637,65 +2564,58 @@ export default function RealtorManagement() {
                               background: '#ffffff',
                               border: '1px solid var(--border-color)',
                               borderRadius: '10px',
-                              padding: '1rem',
+                              padding: '1.1rem',
                               display: 'flex',
                               flexDirection: 'column',
-                              gap: '0.65rem',
+                              gap: '0.85rem',
                               boxShadow: 'var(--shadow-sm)'
                             }}
                           >
+                            {/* Client Header Info */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                                {userImg ? (
-                                  <img
-                                    src={userImg}
-                                    alt={lead.name}
-                                    style={{
-                                      width: '36px',
-                                      height: '36px',
-                                      borderRadius: '50%',
-                                      objectFit: 'cover',
-                                      border: '1px solid var(--primary)',
-                                      flexShrink: 0
-                                    }}
-                                  />
-                                ) : (
-                                  <div style={{
-                                    width: '36px',
-                                    height: '36px',
-                                    borderRadius: '50%',
-                                    background: 'rgba(250, 179, 25, 0.12)',
-                                    color: '#b47404',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontWeight: 700,
-                                    fontSize: '0.85rem',
-                                    flexShrink: 0
-                                  }}>
-                                    {lead.name ? lead.name.charAt(0).toUpperCase() : 'L'}
-                                  </div>
-                                )}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <RealtorAvatar
+                                  src={userImg}
+                                  name={clientName}
+                                  size={40}
+                                  fontSize="0.95rem"
+                                  border="2px solid var(--primary)"
+                                />
                                 <div>
-                                  <h4 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 600 }}>
-                                    {lead.name}
-                                  </h4>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-secondary)', flexWrap: 'wrap', marginTop: '0.1rem' }}>
-                                    {lead.email && (
-                                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                                        <Mail size={12} style={{ color: 'var(--text-muted)' }} /> {lead.email}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                    <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+                                      {clientName}
+                                    </h4>
+                                    {lead.isClaimed && (
+                                      <span style={{
+                                        fontSize: '0.68rem',
+                                        fontWeight: 600,
+                                        background: 'rgba(16, 185, 129, 0.1)',
+                                        color: '#059669',
+                                        border: '1px solid rgba(16, 185, 129, 0.25)',
+                                        borderRadius: '4px',
+                                        padding: '0.1rem 0.4rem'
+                                      }}>
+                                        Claimed
                                       </span>
                                     )}
-                                    {lead.phone && (
-                                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                                        <Phone size={12} style={{ color: 'var(--text-muted)' }} /> {lead.phone}
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-secondary)', flexWrap: 'wrap', marginTop: '0.15rem' }}>
+                                    {clientEmail && (
+                                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                        <Mail size={12} style={{ color: 'var(--text-muted)' }} /> {clientEmail}
+                                      </span>
+                                    )}
+                                    {clientPhone && (
+                                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                        <Phone size={12} style={{ color: 'var(--text-muted)' }} /> {clientPhone}
                                       </span>
                                     )}
                                   </div>
                                 </div>
                               </div>
 
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                                 {renderLeadStatusBadge(lead.status)}
                                 <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                                   {lead.createdAt ? new Date(lead.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
@@ -1703,7 +2623,7 @@ export default function RealtorManagement() {
                               </div>
                             </div>
 
-                            {/* Inquiry message */}
+                            {/* Inquiry Message / Description */}
                             {lead.description && (
                               <div style={{
                                 background: '#faf8f5',
@@ -1722,9 +2642,150 @@ export default function RealtorManagement() {
                               </div>
                             )}
 
-                            {lead.user && lead.user.name && lead.user.name !== lead.name && (
-                              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                                Linked User Account: <strong>{lead.user.name}</strong> ({lead.user.email})
+                            {/* AI Lead Sheet Section */}
+                            {aiSheet && (
+                              <div style={{
+                                background: 'linear-gradient(135deg, rgba(250, 179, 25, 0.06) 0%, rgba(10, 31, 57, 0.02) 100%)',
+                                border: '1px solid rgba(250, 179, 25, 0.28)',
+                                borderRadius: '8px',
+                                padding: '0.85rem 1rem',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.75rem'
+                              }}>
+                                {/* AI Sheet Header */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                                    <div style={{
+                                      width: '22px',
+                                      height: '22px',
+                                      borderRadius: '6px',
+                                      background: 'var(--primary)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      color: '#0a1f39'
+                                    }}>
+                                      <Sparkles size={13} />
+                                    </div>
+                                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.01em' }}>
+                                      AI Lead Intelligence Sheet
+                                    </span>
+                                    {aiSheet.extractedAt && (
+                                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                        • Analyzed {new Date(aiSheet.extractedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {aiSheet.leadQuality && renderLeadQualityBadge(aiSheet.leadQuality)}
+                                </div>
+
+                                {/* Key Insights Grid */}
+                                <div style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                                  gap: '0.5rem'
+                                }}>
+                                  {/* Verified Budget */}
+                                  <div style={{
+                                    background: '#ffffff',
+                                    border: '1px solid rgba(10, 31, 57, 0.08)',
+                                    borderRadius: '6px',
+                                    padding: '0.5rem 0.65rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.2rem'
+                                  }}>
+                                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                      <DollarSign size={11} style={{ color: 'var(--primary)' }} /> Budget
+                                    </span>
+                                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                      {aiSheet.verifiedBudget?.formatted || (aiSheet.verifiedBudget?.amount ? `${aiSheet.verifiedBudget.currency || '$'}${aiSheet.verifiedBudget.amount}` : 'Not specified')}
+                                    </span>
+                                  </div>
+
+                                  {/* Payment Method */}
+                                  <div style={{
+                                    background: '#ffffff',
+                                    border: '1px solid rgba(10, 31, 57, 0.08)',
+                                    borderRadius: '6px',
+                                    padding: '0.5rem 0.65rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.2rem'
+                                  }}>
+                                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                      <CreditCard size={11} style={{ color: 'var(--primary)' }} /> Payment
+                                    </span>
+                                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'capitalize' }}>
+                                      {(aiSheet.paymentMethod || 'Undecided').toLowerCase()}
+                                    </span>
+                                  </div>
+
+                                  {/* Timeline */}
+                                  <div style={{
+                                    background: '#ffffff',
+                                    border: '1px solid rgba(10, 31, 57, 0.08)',
+                                    borderRadius: '6px',
+                                    padding: '0.5rem 0.65rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.2rem'
+                                  }}>
+                                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                      <Calendar size={11} style={{ color: 'var(--primary)' }} /> Timeline
+                                    </span>
+                                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'capitalize' }}>
+                                      {(aiSheet.timeline || 'Undecided').toLowerCase()}
+                                    </span>
+                                  </div>
+
+                                  {/* Preferred Property Type & Beds */}
+                                  <div style={{
+                                    background: '#ffffff',
+                                    border: '1px solid rgba(10, 31, 57, 0.08)',
+                                    borderRadius: '6px',
+                                    padding: '0.5rem 0.65rem',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.2rem'
+                                  }}>
+                                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                      <Home size={11} style={{ color: 'var(--primary)' }} /> Property Type
+                                    </span>
+                                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'capitalize' }}>
+                                      {(aiSheet.preferredPropertyType || 'Any Property').toLowerCase()}
+                                      {aiSheet.preferredBedrooms ? ` • ${aiSheet.preferredBedrooms} Beds` : ''}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Target Areas */}
+                                {Array.isArray(aiSheet.areasOfInterest) && aiSheet.areasOfInterest.length > 0 && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.1rem' }}>
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>Target Areas:</span>
+                                    {aiSheet.areasOfInterest.map((area, idx) => (
+                                      <span
+                                        key={idx}
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '0.2rem',
+                                          background: '#ffffff',
+                                          border: '1px solid rgba(10, 31, 57, 0.12)',
+                                          borderRadius: '4px',
+                                          padding: '0.15rem 0.45rem',
+                                          fontSize: '0.72rem',
+                                          fontWeight: 600,
+                                          color: 'var(--text-primary)'
+                                        }}
+                                      >
+                                        <MapPin size={10} style={{ color: 'var(--primary)' }} /> {area}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1748,74 +2809,300 @@ export default function RealtorManagement() {
                           ? `No leads with status "${leadStatusFilter}" for this agent.`
                           : 'There are currently no customer leads assigned to this realtor.'}
                       </p>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setActiveViewTab('credentials')}
+                        style={{ marginTop: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                      >
+                        <FileCheck size={14} /> View Agent Profile & Uploaded Documents
+                      </button>
                     </div>
                   )}
                 </div>
               ) : (
-                /* TAB 2: PROFILE & CREDENTIALS REVIEW */
+                /* TAB 1: PROFILE, AGENCY & CREDENTIALS (DEFAULT ACTIVE) */
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
-                  <div style={{ background: '#faf8f5', padding: '1.25rem', border: '1px solid var(--border-color)', borderRadius: '10px' }}>
-                    <h4 style={{ fontSize: '0.95rem', margin: '0 0 0.85rem', color: 'var(--text-primary)' }}>Applicant Identity</h4>
+                  
+                  {/* 1. APPLICANT PERSONAL & ACCOUNT IDENTITY */}
+                  <div style={{ background: '#faf8f5', padding: '1.25rem', border: '1px solid var(--border-color)', borderRadius: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                        <Users size={17} style={{ color: 'var(--primary)' }} />
+                        <h4 style={{ fontSize: '0.95rem', margin: 0, fontWeight: 700, color: 'var(--text-primary)' }}>
+                          Applicant Identity & Contact
+                        </h4>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        {renderStatusBadge(detailedAgent.status || selectedAgent.status, detailedAgent.isActive !== undefined ? detailedAgent.isActive : selectedAgent.isActive)}
+                        {detailedAgent.isEmailVerified ? (
+                          <span className="badge badge-success" style={{ fontSize: '0.72rem', padding: '0.2rem 0.55rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <CheckCircle size={12} /> Email Verified
+                          </span>
+                        ) : (
+                          <span className="badge" style={{ fontSize: '0.72rem', padding: '0.2rem 0.55rem', background: 'rgba(0,0,0,0.06)', color: 'var(--text-muted)' }}>
+                            Email Unverified
+                          </span>
+                        )}
+                        {detailedAgent.isCoveredByAgency && (
+                          <span className="badge badge-warning" style={{ fontSize: '0.72rem', padding: '0.2rem 0.55rem' }}>
+                            Agency Covered
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="realtor-identity-grid">
-                      <p><strong style={{ color: 'var(--text-secondary)' }}>Full Name:</strong> {detailedAgent.name || selectedAgent.name}</p>
-                      <p><strong style={{ color: 'var(--text-secondary)' }}>Email:</strong> {detailedAgent.email || selectedAgent.email}</p>
-                      <p><strong style={{ color: 'var(--text-secondary)' }}>Phone:</strong> {detailedAgent.phone || selectedAgent.phone || 'Not specified'}</p>
-                      <p><strong style={{ color: 'var(--text-secondary)' }}>Agency:</strong> {detailedAgent.agencyName || detailedAgent.agency || selectedAgent.agency || selectedAgent.agencyName}</p>
-                      <p><strong style={{ color: 'var(--text-secondary)' }}>License Number:</strong> {detailedAgent.licenseNumber || detailedAgent.liceneseNumber || detailedAgent.license || selectedAgent.license}</p>
-                      <p><strong style={{ color: 'var(--text-secondary)' }}>Registration Date:</strong> {detailedAgent.createdAt ? new Date(detailedAgent.createdAt).toLocaleDateString() : 'N/A'}</p>
+                      <p><strong style={{ color: 'var(--text-secondary)' }}>Full Name:</strong> {safeRenderText(detailedAgent.name || selectedAgent.name)}</p>
+                      <p>
+                        <strong style={{ color: 'var(--text-secondary)' }}>Email:</strong>{' '}
+                        <a href={`mailto:${detailedAgent.email || selectedAgent.email}`} style={{ color: 'var(--primary)', textDecoration: 'none' }}>
+                          {safeRenderText(detailedAgent.email || selectedAgent.email)}
+                        </a>
+                      </p>
+                      <p>
+                        <strong style={{ color: 'var(--text-secondary)' }}>Phone:</strong>{' '}
+                        {detailedAgent.phone || selectedAgent.phone ? (
+                          <a href={`tel:${detailedAgent.phone || selectedAgent.phone}`} style={{ color: 'var(--text-primary)', textDecoration: 'none' }}>
+                            {safeRenderText(detailedAgent.phone || selectedAgent.phone)}
+                          </a>
+                        ) : 'Not specified'}
+                      </p>
+                      <p><strong style={{ color: 'var(--text-secondary)' }}>Role:</strong> <span style={{ textTransform: 'capitalize' }}>{detailedAgent.role || 'Agent'}</span></p>
+                      <p><strong style={{ color: 'var(--text-secondary)' }}>Operational Status:</strong> <span style={{ fontWeight: 600, color: (detailedAgent.isActive ?? true) ? 'var(--success)' : 'var(--danger)' }}>{(detailedAgent.isActive ?? true) ? 'Active' : 'Disabled'}</span></p>
+                      <p><strong style={{ color: 'var(--text-secondary)' }}>Preferred Language:</strong> <span style={{ textTransform: 'capitalize' }}>{detailedAgent.preferredLanguage || 'English'}</span></p>
+                      <p><strong style={{ color: 'var(--text-secondary)' }}>Preferred Currency:</strong> <span style={{ textTransform: 'capitalize' }}>{detailedAgent.preferredCurrency || 'Dollar'}</span></p>
+                      <p><strong style={{ color: 'var(--text-secondary)' }}>Registered On:</strong> {detailedAgent.createdAt ? new Date(detailedAgent.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}</p>
+                      <p><strong style={{ color: 'var(--text-secondary)' }}>Last Updated:</strong> {detailedAgent.updatedAt ? new Date(detailedAgent.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}</p>
+                      <p style={{ gridColumn: '1 / -1' }}>
+                        <strong style={{ color: 'var(--text-secondary)' }}>Terms & Conditions:</strong>{' '}
+                        <span style={{ fontWeight: 600, color: detailedAgent.is_selected_checkBox ? 'var(--success)' : 'var(--warning)', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                          {detailedAgent.is_selected_checkBox ? <CheckCircle size={13} /> : <AlertTriangle size={13} />}
+                          {detailedAgent.is_selected_checkBox ? 'Accepted and Validated' : 'Not Accepted'}
+                        </span>
+                      </p>
                     </div>
                   </div>
 
-                  {/* Document Review Section */}
-                  <div style={{
-                    background: '#faf8f5',
-                    border: '1px solid var(--border-color)',
-                    padding: '1.25rem',
-                    borderRadius: '10px',
-                    textAlign: 'center',
-                    color: 'var(--text-secondary)'
-                  }}>
-                    <FileText size={40} style={{ color: 'var(--primary)', margin: '0 auto 0.75rem' }} />
-                    <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
-                      {(detailedAgent.document || selectedAgent.document)
-                        ? 'License Verification Document'
-                        : 'No Document Uploaded'}
-                    </h4>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                      {(detailedAgent.document || selectedAgent.document)
-                        ? 'Official licensing and accreditation document on file for this realtor.'
-                        : 'This realtor has not uploaded an official verification document yet.'}
-                    </p>
-
-                    {(detailedAgent.document || selectedAgent.document) ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
-                        {/\.(png|jpe?g|webp|gif)$/i.test(detailedAgent.document || selectedAgent.document) && (
-                          <img
-                            src={getMediaUrl(detailedAgent.document || selectedAgent.document)}
-                            alt="License Document"
-                            style={{
-                              maxWidth: '100%',
-                              maxHeight: '200px',
-                              borderRadius: '8px',
-                              border: '1px solid var(--border-color)',
-                              objectFit: 'contain',
-                              boxShadow: 'var(--shadow-sm)'
-                            }}
-                          />
-                        )}
-                        <a
-                          href={getMediaUrl(detailedAgent.document || selectedAgent.document)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn btn-secondary btn-sm"
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-                        >
-                          <ExternalLink size={14} />
-                          Open Document in New Tab
-                        </a>
+                  {/* 2. LEGAL IDENTIFICATION & AEI ACCREDITATION */}
+                  <div style={{ background: '#ffffff', padding: '1.25rem', border: '1px solid var(--border-color)', borderRadius: '12px', boxShadow: 'var(--shadow-sm)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                        <FileCheck size={17} style={{ color: 'var(--primary)' }} />
+                        <h4 style={{ fontSize: '0.95rem', margin: 0, fontWeight: 700, color: 'var(--text-primary)' }}>
+                          Identification & Association Credentials
+                        </h4>
                       </div>
-                    ) : null}
+                      {detailedAgent.aeiNumber && (
+                        <span className="badge badge-warning" style={{ fontSize: '0.72rem', padding: '0.2rem 0.55rem', fontWeight: 700 }}>
+                          AEI Certified
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="realtor-identity-grid">
+                      <p>
+                        <strong style={{ color: 'var(--text-secondary)' }}>ID Type:</strong>{' '}
+                        <span style={{ fontWeight: 600 }}>{detailedAgent.idType || 'Passport / National ID'}</span>
+                      </p>
+                      <p>
+                        <strong style={{ color: 'var(--text-secondary)' }}>ID Document Number:</strong>{' '}
+                        <code style={{ fontFamily: 'monospace', fontWeight: 700, background: '#f1f5f9', padding: '0.15rem 0.4rem', borderRadius: '4px', fontSize: '0.85rem' }}>
+                          {detailedAgent.idNumber || '—'}
+                        </code>
+                      </p>
+                      <p>
+                        <strong style={{ color: 'var(--text-secondary)' }}>AEI Registration No:</strong>{' '}
+                        <code style={{ fontFamily: 'monospace', fontWeight: 700, color: '#b47404', background: 'rgba(250, 179, 25, 0.12)', padding: '0.15rem 0.4rem', borderRadius: '4px', fontSize: '0.85rem' }}>
+                          {detailedAgent.aeiNumber || detailedAgent.licenseNumber || '—'}
+                        </code>
+                      </p>
+                      <p>
+                        <strong style={{ color: 'var(--text-secondary)' }}>Employee / Broker ID:</strong>{' '}
+                        <code style={{ fontFamily: 'monospace', fontWeight: 600, background: '#f1f5f9', padding: '0.15rem 0.4rem', borderRadius: '4px', fontSize: '0.85rem' }}>
+                          {detailedAgent.employeeId || '—'}
+                        </code>
+                      </p>
+                    </div>
                   </div>
+
+                  {/* 3. AGENCY AFFILIATION & SPONSORSHIP */}
+                  {detailedAgent.agency && typeof detailedAgent.agency === 'object' && (
+                    <div style={{
+                      background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(253, 248, 238, 0.85) 100%)',
+                      padding: '1.25rem',
+                      border: '1px solid rgba(250, 179, 25, 0.35)',
+                      borderRadius: '12px',
+                      boxShadow: 'var(--shadow-sm)'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                          <Building size={18} style={{ color: 'var(--primary)' }} />
+                          <div>
+                            <h4 style={{ fontSize: '0.95rem', margin: 0, fontWeight: 700, color: 'var(--text-primary)' }}>
+                              Affiliated Agency: {detailedAgent.agency.name || 'Untitled Agency'}
+                            </h4>
+                            {detailedAgent.agency.description && (
+                              <p style={{ margin: '0.15rem 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                {detailedAgent.agency.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                          {detailedAgent.agency.isFoundingSponsor && (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'linear-gradient(135deg, #fab319 0%, #f59e0b 100%)',
+                              color: '#0a1f39',
+                              padding: '0.2rem 0.55rem',
+                              borderRadius: '20px',
+                              fontSize: '0.7rem',
+                              fontWeight: 800,
+                              textTransform: 'uppercase'
+                            }}>
+                              <Sparkles size={11} /> Founding Sponsor
+                            </span>
+                          )}
+                          {detailedAgent.agency.isVerified && (
+                            <span className="badge badge-success" style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem' }}>
+                              <CheckCircle size={11} /> Verified Agency
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="realtor-identity-grid" style={{ marginTop: '0.65rem' }}>
+                        <p>
+                          <strong style={{ color: 'var(--text-secondary)' }}>Agency Website:</strong>{' '}
+                          {detailedAgent.agency.website ? (
+                            <a
+                              href={detailedAgent.agency.website.startsWith('http') ? detailedAgent.agency.website : `https://${detailedAgent.agency.website}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: 'var(--primary)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.25rem', textDecoration: 'none' }}
+                            >
+                              {detailedAgent.agency.website.replace(/^https?:\/\/(www\.)?/, '')}
+                              <ExternalLink size={11} />
+                            </a>
+                          ) : '—'}
+                        </p>
+                        <p>
+                          <strong style={{ color: 'var(--text-secondary)' }}>Seat Coverage:</strong>{' '}
+                          <span style={{ fontWeight: 600, color: detailedAgent.isCoveredByAgency ? 'var(--success)' : 'var(--text-primary)' }}>
+                            {detailedAgent.isCoveredByAgency ? 'Covered under Agency Package' : 'Independent Seat'}
+                          </span>
+                        </p>
+                        <p>
+                          <strong style={{ color: 'var(--text-secondary)' }}>Agency Agent Seats:</strong>{' '}
+                          <span style={{ fontWeight: 700 }}>
+                            {detailedAgent.agency.coveredAgentsCount ?? 0} / {detailedAgent.agency.agentSeatsLimit ?? 10} filled
+                          </span>
+                        </p>
+                        {detailedAgent.agency.brandColorHex && (
+                          <p style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <strong style={{ color: 'var(--text-secondary)' }}>Brand Color:</strong>
+                            <span style={{
+                              display: 'inline-block',
+                              width: '14px',
+                              height: '14px',
+                              borderRadius: '3px',
+                              backgroundColor: detailedAgent.agency.brandColorHex,
+                              border: '1px solid rgba(0,0,0,0.2)'
+                            }} />
+                            <code style={{ fontSize: '0.75rem' }}>{detailedAgent.agency.brandColorHex}</code>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 4. SUBSCRIPTION TIER DETAILS */}
+                  {agentTier && (
+                    <div
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(250, 179, 25, 0.08) 0%, rgba(250, 179, 25, 0.02) 100%)',
+                        border: '1px solid rgba(250, 179, 25, 0.3)',
+                        borderRadius: '12px',
+                        padding: '1rem 1.25rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.45rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <Award size={18} style={{ color: 'var(--primary)' }} />
+                          <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                            {agentTier.name || `Tier ${agentTier.tierLevel || 1}`}
+                          </h4>
+                        </div>
+                        {agentTier.tierLevel !== undefined && (
+                          <span
+                            style={{
+                              padding: '0.2rem 0.65rem',
+                              borderRadius: '20px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              background: 'var(--primary)',
+                              color: '#0a1f39',
+                              boxShadow: '0 2px 4px rgba(250, 179, 25, 0.3)'
+                            }}
+                          >
+                            Tier Level {agentTier.tierLevel}
+                          </span>
+                        )}
+                      </div>
+                      {agentTier.description && (
+                        <p style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.45, whiteSpace: 'pre-line' }}>
+                          {agentTier.description}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 5. AI CHAT & PLATFORM USAGE */}
+                  <div style={{
+                    background: '#ffffff',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '12px',
+                    padding: '1rem 1.25rem'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.65rem' }}>
+                      <Sparkles size={16} style={{ color: 'var(--primary)' }} />
+                      <h4 style={{ fontSize: '0.92rem', margin: 0, fontWeight: 700, color: 'var(--text-primary)' }}>
+                        AI Assistant & Platform Activity
+                      </h4>
+                    </div>
+                    <div className="realtor-identity-grid">
+                      <p>
+                        <strong style={{ color: 'var(--text-secondary)' }}>AI Chat Usage:</strong>{' '}
+                        <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                          {detailedAgent.aiChatUsage?.count ?? 0} conversations
+                        </span>
+                      </p>
+                      <p>
+                        <strong style={{ color: 'var(--text-secondary)' }}>Last AI Chat:</strong>{' '}
+                        <span>
+                          {detailedAgent.aiChatUsage?.lastUsedDate
+                            ? new Date(detailedAgent.aiChatUsage.lastUsedDate).toLocaleString()
+                            : 'No sessions yet'}
+                        </span>
+                      </p>
+                      <p>
+                        <strong style={{ color: 'var(--text-secondary)' }}>AI Search Inquiries:</strong>{' '}
+                        <span>
+                          {Array.isArray(detailedAgent.aiSearchHistory) ? detailedAgent.aiSearchHistory.length : 0} recorded
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 6. DOCUMENT REVIEW SECTION WITH MULTI-DOCUMENT VIEWER & LIGHTBOX */}
+                  <RealtorDocumentSection agent={selectedAgent} details={detailedAgent} baseUrl={baseUrl} />
 
                   {/* Reject reason display if already rejected */}
                   {normalizeStatus(selectedAgent.status) === 'rejected' && selectedAgent.rejectionReason && (
@@ -1868,7 +3155,7 @@ export default function RealtorManagement() {
 
             {/* Modal Footer */}
             {!showRejectForm && (
-              <div className="modal-footer" style={{ padding: '0.85rem 1.25rem' }}>
+              <div className="modal-footer" style={{ padding: '0.85rem 1.25rem', flexShrink: 0 }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setSelectedAgent(null)}>
                   Close
                 </button>
@@ -1915,17 +3202,33 @@ export default function RealtorManagement() {
         <div className="modal-overlay" onClick={() => !editLoading && setEditingAgent(null)}>
           <form
             className="modal-content"
-            style={{ maxWidth: '620px', width: '100%', maxHeight: '90vh' }}
+            style={{
+              maxWidth: '620px',
+              width: '100%',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column'
+            }}
             onSubmit={handleEditSubmit}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="modal-header">
+            <div className="modal-header" style={{ flexShrink: 0 }}>
               <h3 style={{ margin: 0 }}>Update Realtor Profile</h3>
               <button type="button" className="btn btn-ghost btn-sm btn-icon" onClick={() => !editLoading && setEditingAgent(null)}>
                 <X size={16} />
               </button>
             </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxHeight: '75vh', overflowY: 'auto' }}>
+            <div
+              className="modal-body"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1.25rem',
+                flex: '1 1 0%',
+                minHeight: 0,
+                overflowY: 'auto'
+              }}
+            >
               {/* Profile Image Section */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
                 <div style={{ position: 'relative' }}>
@@ -1943,21 +3246,13 @@ export default function RealtorManagement() {
                       }}
                     />
                   ) : (
-                    <div style={{
-                      width: '72px',
-                      height: '72px',
-                      borderRadius: '50%',
-                      background: 'rgba(250, 179, 25, 0.12)',
-                      border: '3px solid var(--primary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '1.75rem',
-                      fontWeight: 700,
-                      color: '#b47404'
-                    }}>
-                      {formName ? formName.charAt(0).toUpperCase() : 'A'}
-                    </div>
+                    <RealtorAvatar
+                      src={editingAgent?.profileImage}
+                      name={formName || editingAgent?.name}
+                      size={72}
+                      fontSize="1.75rem"
+                      border="3px solid var(--primary)"
+                    />
                   )}
                 </div>
                 <div style={{ flex: 1, minWidth: '180px' }}>
@@ -2016,43 +3311,49 @@ export default function RealtorManagement() {
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Agency Name *</label>
-                  <input
-                    type="text"
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                    <label className="form-label" style={{ margin: 0, fontWeight: 600 }}>Agency Name *</label>
+                    {agenciesLoading && (
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <Loader2 size={11} className="animate-spin" /> Loading agencies...
+                      </span>
+                    )}
+                  </div>
+                  <select
                     className="form-control"
                     value={formAgencyName}
                     onChange={(e) => setFormAgencyName(e.target.value)}
-                    placeholder="e.g. Skyline Realty Partners"
                     required
-                  />
+                  >
+                    <option value="">Select an Agency...</option>
+                    {agenciesList.map((agency) => {
+                      const agencyName = agency.name || agency.agencyName || agency.title || 'Unnamed Agency';
+                      const agencyId = agency._id || agency.id || agencyName;
+                      return (
+                        <option key={agencyId} value={agencyName}>
+                          {agencyName} {agency.isActive === false ? '(Inactive)' : ''}
+                        </option>
+                      );
+                    })}
+                    {formAgencyName && !agenciesList.some(ag => (ag.name || ag.agencyName || ag.title) === formAgencyName) && (
+                      <option value={formAgencyName}>
+                        {formAgencyName} (Current)
+                      </option>
+                    )}
+                  </select>
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-                <div className="form-group">
-                  <label className="form-label">License Number / Code *</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={formLicenseNumber}
-                    onChange={(e) => setFormLicenseNumber(e.target.value)}
-                    placeholder="e.g. LIC-2025-4512"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Verification / Account Status</label>
-                  <select
-                    className="form-control form-select"
-                    value={formStatus}
-                    onChange={(e) => setFormStatus(e.target.value)}
-                  >
-                    <option value="pending">Pending</option>
-                    <option value="approved">Approved</option>
-                    <option value="rejected">Rejected</option>
-                    <option value="suspended">Suspended</option>
-                  </select>
-                </div>
+              <div className="form-group">
+                <label className="form-label">License Number / Code *</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={formLicenseNumber}
+                  onChange={(e) => setFormLicenseNumber(e.target.value)}
+                  placeholder="e.g. LIC-2025-4512"
+                  required
+                />
               </div>
 
               {/* Document Upload Field */}
@@ -2076,7 +3377,7 @@ export default function RealtorManagement() {
               </div>
             </div>
 
-            <div className="modal-footer">
+            <div className="modal-footer" style={{ flexShrink: 0 }}>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -2128,10 +3429,10 @@ export default function RealtorManagement() {
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem', padding: '1.25rem' }}>
               <div style={{ background: '#faf8f5', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                 <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
-                  {statusModalAgent.name}
+                  {safeRenderText(statusModalAgent.name)}
                 </p>
                 <p style={{ margin: '0.15rem 0 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
-                  {statusModalAgent.agency || statusModalAgent.agencyName} • {statusModalAgent.email}
+                  {safeRenderText(statusModalAgent.agency || statusModalAgent.agencyName)} • {safeRenderText(statusModalAgent.email)}
                 </p>
               </div>
 
@@ -2153,11 +3454,11 @@ export default function RealtorManagement() {
                     boxSizing: 'border-box',
                     cursor: 'pointer',
                     borderColor: statusModalValue === 'approved' ? '#10b981' :
-                                 statusModalValue === 'pending' ? '#f59e0b' : '#ef4444',
+                      statusModalValue === 'pending' ? '#f59e0b' : '#ef4444',
                     background: statusModalValue === 'approved' ? '#ecfdf5' :
-                                statusModalValue === 'pending' ? '#fffbeb' : '#fef2f2',
+                      statusModalValue === 'pending' ? '#fffbeb' : '#fef2f2',
                     color: statusModalValue === 'approved' ? '#047857' :
-                           statusModalValue === 'pending' ? '#b47404' : '#b91c1c'
+                      statusModalValue === 'pending' ? '#b47404' : '#b91c1c'
                   }}
                 >
                   <option value="pending" style={{ background: '#ffffff', color: '#b47404' }}>Pending</option>
@@ -2259,45 +3560,21 @@ export default function RealtorManagement() {
                 alignItems: 'center',
                 gap: '0.85rem'
               }}>
-                {getMediaUrl(agentToDelete.profileImage) ? (
-                  <img
-                    src={getMediaUrl(agentToDelete.profileImage)}
-                    alt={agentToDelete.name}
-                    style={{
-                      width: '44px',
-                      height: '44px',
-                      borderRadius: '50%',
-                      objectFit: 'cover',
-                      border: '2px solid var(--primary)',
-                      flexShrink: 0
-                    }}
-                  />
-                ) : (
-                  <div style={{
-                    width: '44px',
-                    height: '44px',
-                    borderRadius: '50%',
-                    background: 'rgba(250, 179, 25, 0.12)',
-                    border: '2px solid var(--primary)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 700,
-                    color: '#b47404',
-                    flexShrink: 0
-                  }}>
-                    {agentToDelete.name && agentToDelete.name !== '—' ? agentToDelete.name.charAt(0).toUpperCase() : 'A'}
-                  </div>
-                )}
+                <RealtorAvatar
+                  src={agentToDelete.profileImage}
+                  name={agentToDelete.name}
+                  size={44}
+                  fontSize="1.1rem"
+                />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontWeight: 600, margin: 0, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
-                    {agentToDelete.name}
+                    {safeRenderText(agentToDelete.name)}
                   </p>
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.1rem 0 0' }}>
-                    {agentToDelete.agency || agentToDelete.agencyName}
+                    {safeRenderText(agentToDelete.agency || agentToDelete.agencyName)}
                   </p>
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.1rem 0 0', fontFamily: 'monospace' }}>
-                    License: {agentToDelete.license || agentToDelete.licenseNumber}
+                    License: {safeRenderText(agentToDelete.license || agentToDelete.licenseNumber)}
                   </p>
                 </div>
               </div>

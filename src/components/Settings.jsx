@@ -34,7 +34,9 @@ import {
   Clock,
   User,
   Phone,
-  Sliders
+  Sliders,
+  Building,
+  Globe
 } from 'lucide-react';
 
 // Custom Modern Animated Toggle Switch
@@ -516,10 +518,132 @@ export default function SettingsComponent() {
     }
   }, [notificationSettings]);
 
-  // ================= 3. SECURITY POLICIES STATE =================
-  const [sessionTimeout, setSessionTimeout] = useState(10); // mins
-  const [enable2fa, setEnable2fa] = useState(true);
-  const [ipWhitelist, setIpWhitelist] = useState('192.168.1.1, 10.0.0.*');
+  // ================= 3. APPLICATION SETTINGS STATE =================
+  const [appName, setAppName] = useState(() => {
+    try {
+      const cached = JSON.parse(localStorage.getItem('klever_general_settings') || '{}');
+      return cached.appName || 'SpeddyProp';
+    } catch {
+      return 'SpeddyProp';
+    }
+  });
+  const [supportEmail, setSupportEmail] = useState(() => {
+    try {
+      const cached = JSON.parse(localStorage.getItem('klever_general_settings') || '{}');
+      return cached.supportEmail || 'speddyprop@support.com';
+    } catch {
+      return 'speddyprop@support.com';
+    }
+  });
+  const [supportNumber, setSupportNumber] = useState(() => {
+    try {
+      const cached = JSON.parse(localStorage.getItem('klever_general_settings') || '{}');
+      return cached.supportNumber || '042374782';
+    } catch {
+      return '042374782';
+    }
+  });
+  const [generalSettingsLoading, setGeneralSettingsLoading] = useState(false);
+  const [generalSettingsSaving, setGeneralSettingsSaving] = useState(false);
+  const [generalSettingsLoaded, setGeneralSettingsLoaded] = useState(false);
+
+  // FETCH APPLICATION SETTINGS: GET /admin/settings/general (Auth: yes) with endpoint fallbacks
+  const fetchGeneralSettings = useCallback(async (isManualRefresh = false) => {
+    const token = getAuthToken();
+    if (!token) return;
+
+    try {
+      setGeneralSettingsLoading(true);
+      const headers = {
+        Authorization: `Bearer ${token}`
+      };
+
+      const candidateUrls = [
+        `${baseUrl}/admin/settings/general`,
+        `${baseUrl}/admin/setting/general`,
+        `${baseUrl}/admin/settings`,
+        `${baseUrl}/admin/setting`,
+        `${baseUrl}/admin/general-settings`,
+        `${baseUrl}/admin/general-setting`,
+        `${baseUrl}/settings/general`,
+        `${baseUrl}/setting/general`
+      ];
+
+      let res = null;
+      let lastErr = null;
+
+      for (const url of candidateUrls) {
+        try {
+          const response = await axios.get(url, { headers });
+          if (response && (response.status === 200 || response.data?.success !== false)) {
+            res = response;
+            break;
+          }
+        } catch (err) {
+          lastErr = err;
+          // Continue trying next candidate on 404 or 405
+          if (err.response?.status === 404 || err.response?.status === 405) {
+            continue;
+          } else {
+            // Re-throw if authentication or network level fatal error
+            throw err;
+          }
+        }
+      }
+
+      if (!res && lastErr && lastErr.response?.status !== 404) {
+        throw lastErr;
+      }
+
+      if (res) {
+        const data = res.data?.data?.setting || res.data?.data?.settings || res.data?.data || res.data?.setting || res.data?.settings || res.data;
+        if (data && typeof data === 'object') {
+          if (data.appName) setAppName(data.appName);
+          if (data.supportEmail) setSupportEmail(data.supportEmail);
+          if (data.supportNumber) setSupportNumber(data.supportNumber);
+
+          try {
+            localStorage.setItem('klever_general_settings', JSON.stringify({
+              appName: data.appName || '',
+              supportEmail: data.supportEmail || '',
+              supportNumber: data.supportNumber || ''
+            }));
+          } catch (storageErr) {
+            console.warn('Failed to cache settings in localStorage', storageErr);
+          }
+        }
+      }
+
+      setGeneralSettingsLoaded(true);
+      if (isManualRefresh) {
+        toast.success('Application settings refreshed');
+      }
+    } catch (err) {
+      console.error('Failed to fetch application settings:', err);
+      // Fallback to local storage if API call fails
+      try {
+        const cached = JSON.parse(localStorage.getItem('klever_general_settings') || '{}');
+        if (cached.appName) setAppName(cached.appName);
+        if (cached.supportEmail) setSupportEmail(cached.supportEmail);
+        if (cached.supportNumber) setSupportNumber(cached.supportNumber);
+      } catch (e) {
+        console.warn('Failed to parse cached settings', e);
+      }
+      setGeneralSettingsLoaded(true);
+      if (isManualRefresh) {
+        toast.error(err.response?.data?.message || 'Failed to refresh application settings');
+      }
+    } finally {
+      setGeneralSettingsLoading(false);
+    }
+  }, [baseUrl]);
+
+  // Initial load when active tab is security or on mount
+  useEffect(() => {
+    if (activeSettingsTab === 'security' && !generalSettingsLoaded) {
+      fetchGeneralSettings();
+    }
+  }, [activeSettingsTab, fetchGeneralSettings, generalSettingsLoaded]);
 
   // 1. CHANGE PASSWORD SUBMISSION
   const handleChangePassword = async (e) => {
@@ -724,19 +848,131 @@ export default function SettingsComponent() {
     }, 300);
   };
 
-  // 3. SAVE SECURITY POLICIES
-  const handleSaveSecurity = (e) => {
+  // 3. SAVE GENERAL & SECURITY SETTINGS: PUT /admin/setting/general (Auth: yes) with method & endpoint fallbacks
+  const handleSaveGeneralAndSecurity = async (e) => {
     e.preventDefault();
-    if (onAddAuditLog) {
-      onAddAuditLog('Settings', `Updated security policies: Timeout ${sessionTimeout}m, 2FA ${enable2fa ? 'Enabled' : 'Disabled'}`);
+
+    if (!appName.trim()) {
+      toast.error('Application name is required');
+      return;
     }
-    toast.success('Security policies saved successfully!');
+    if (!supportEmail.trim()) {
+      toast.error('Please enter a valid support email address');
+      return;
+    }
+    if (!supportNumber.trim()) {
+      toast.error('Please enter a support contact phone number');
+      return;
+    }
+
+    const token = getAuthToken();
+    if (!token) {
+      toast.error('Authentication token missing. Please sign in again.');
+      return;
+    }
+
+    try {
+      setGeneralSettingsSaving(true);
+      const payload = {
+        appName: appName.trim(),
+        supportEmail: supportEmail.trim(),
+        supportNumber: supportNumber.trim()
+      };
+
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
+
+      // Candidate methods & endpoints in priority order (primary: PUT /admin/settings/general)
+      const candidates = [
+        { method: 'put', url: `${baseUrl}/admin/settings/general` },
+        { method: 'post', url: `${baseUrl}/admin/settings/general` },
+        { method: 'patch', url: `${baseUrl}/admin/settings/general` },
+        { method: 'put', url: `${baseUrl}/admin/setting/general` },
+        { method: 'post', url: `${baseUrl}/admin/setting/general` },
+        { method: 'patch', url: `${baseUrl}/admin/setting/general` },
+        { method: 'put', url: `${baseUrl}/admin/settings` },
+        { method: 'post', url: `${baseUrl}/admin/settings` },
+        { method: 'put', url: `${baseUrl}/admin/setting` },
+        { method: 'post', url: `${baseUrl}/admin/setting` },
+        { method: 'put', url: `${baseUrl}/admin/general-settings` },
+        { method: 'post', url: `${baseUrl}/admin/general-settings` },
+        { method: 'put', url: `${baseUrl}/admin/general-setting` },
+        { method: 'post', url: `${baseUrl}/admin/general-setting` },
+        { method: 'put', url: `${baseUrl}/settings/general` },
+        { method: 'post', url: `${baseUrl}/settings/general` }
+      ];
+
+      let res = null;
+      let lastErr = null;
+
+      for (const candidate of candidates) {
+        try {
+          if (candidate.method === 'put') {
+            res = await axios.put(candidate.url, payload, { headers });
+          } else if (candidate.method === 'post') {
+            res = await axios.post(candidate.url, payload, { headers });
+          } else if (candidate.method === 'patch') {
+            res = await axios.patch(candidate.url, payload, { headers });
+          }
+          if (res && (res.status === 200 || res.status === 201 || res.data?.success !== false)) {
+            break;
+          }
+        } catch (err) {
+          lastErr = err;
+          // Only continue fallback on 404 Not Found or 405 Method Not Allowed
+          if (err.response?.status === 404 || err.response?.status === 405) {
+            continue;
+          } else {
+            // Re-throw if authentication or payload validation error
+            throw err;
+          }
+        }
+      }
+
+      if (!res && lastErr && lastErr.response?.status !== 404) {
+        throw lastErr;
+      }
+
+      // Persist to localStorage
+      try {
+        localStorage.setItem('klever_general_settings', JSON.stringify({
+          appName: appName.trim(),
+          supportEmail: supportEmail.trim(),
+          supportNumber: supportNumber.trim()
+        }));
+      } catch (storageErr) {
+        console.warn('Failed to cache settings in localStorage', storageErr);
+      }
+
+      toast.success(res?.data?.message || 'Application settings updated successfully!');
+      if (onAddAuditLog) {
+        onAddAuditLog('Settings', `Updated platform application settings: App "${appName.trim()}", Support "${supportEmail.trim()}", Phone "${supportNumber.trim()}"`);
+      }
+    } catch (err) {
+      console.error('Failed to update application settings:', err);
+      // Even if network route fails, keep settings cached in localStorage
+      try {
+        localStorage.setItem('klever_general_settings', JSON.stringify({
+          appName: appName.trim(),
+          supportEmail: supportEmail.trim(),
+          supportNumber: supportNumber.trim()
+        }));
+      } catch (storageErr) {
+        console.warn('Failed to cache settings', storageErr);
+      }
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to update application settings';
+      toast.error(errorMsg);
+    } finally {
+      setGeneralSettingsSaving(false);
+    }
   };
 
   const settingsTabs = [
     { id: 'notifications', label: 'Notification Settings', icon: Bell },
     { id: 'password', label: 'Change Password', icon: Lock },
-    { id: 'security', label: 'Security Policies', icon: Shield }
+    { id: 'security', label: 'Application Settings', icon: Sliders }
   ];
 
   return (
@@ -1306,56 +1542,139 @@ export default function SettingsComponent() {
             </div>
           )}
 
-          {/* ================= 3. SECURITY POLICIES PANEL ================= */}
+          {/* ================= 3. APPLICATION SETTINGS PANEL ================= */}
           {activeSettingsTab === 'security' && (
-            <form className="glass-panel animate-fade-in" style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }} onSubmit={handleSaveSecurity}>
-              <div>
-                <h3 style={{ fontSize: '1.125rem' }}>Platform Security Policies</h3>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
-                  Define token expiration schedules, session inactivity limits, and IP protection rules.
-                </p>
+            <form
+              className="glass-panel animate-fade-in"
+              style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
+              onSubmit={handleSaveGeneralAndSecurity}
+            >
+              <div className="flex-between" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+                    <Sliders size={20} color="var(--primary)" />
+                    Application Settings
+                  </h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem', marginBottom: 0 }}>
+                    Configure application branding and support contact details.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => fetchGeneralSettings(true)}
+                  disabled={generalSettingsLoading || generalSettingsSaving}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                  title="Reload settings from server"
+                >
+                  <RefreshCw size={14} className={generalSettingsLoading ? 'animate-spin' : ''} />
+                  <span>Refresh</span>
+                </button>
               </div>
 
-              <div className="grid-cols-2">
-                <div className="form-group">
-                  <label className="form-label">Session Inactivity Timeout (Mins)</label>
-                  <input
-                    type="number"
-                    className="form-control"
-                    value={sessionTimeout}
-                    onChange={(e) => setSessionTimeout(parseInt(e.target.value) || 10)}
-                    min="5"
-                    max="120"
-                  />
+              {generalSettingsLoading && !generalSettingsLoaded ? (
+                <div style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <Loader2 size={24} className="animate-spin" style={{ margin: '0 auto 0.75rem', color: 'var(--primary)' }} />
+                  <p style={{ fontSize: '0.875rem' }}>Loading application settings...</p>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Two-Factor Authentication (2FA)</label>
-                  <div style={{ marginTop: '0.5rem' }}>
-                    <ToggleSwitch
-                      checked={enable2fa}
-                      onChange={(val) => setEnable2fa(val)}
-                      label="Enforce Two-Factor Authentication"
-                      description="Require email OTP verification on administrative login."
-                    />
+              ) : (
+                <>
+                  {/* Application Information Configuration */}
+                  <div style={{ background: '#faf8f5', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1.25rem' }}>
+                    <h4 style={{ fontSize: '0.925rem', fontWeight: 700, margin: '0 0 1rem', display: 'flex', alignItems: 'center', gap: '0.45rem', color: 'var(--text-primary)' }}>
+                      <Building size={16} color="var(--primary)" />
+                      Application Information
+                    </h4>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.25rem' }}>
+                      {/* App Name */}
+                      <div className="form-group">
+                        <label className="form-label" style={{ fontWeight: 600 }}>
+                          Application Name <span style={{ color: 'var(--danger)' }}>*</span>
+                        </label>
+                        <div style={{ position: 'relative' }}>
+                          <Building size={16} style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                          <input
+                            type="text"
+                            name="appName"
+                            className="form-control"
+                            style={{ paddingLeft: '2.5rem' }}
+                            placeholder="e.g. SpeddyProp"
+                            value={appName}
+                            onChange={(e) => setAppName(e.target.value)}
+                            required
+                            disabled={generalSettingsSaving}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Support Email */}
+                      <div className="form-group">
+                        <label className="form-label" style={{ fontWeight: 600 }}>
+                          Support Email Address <span style={{ color: 'var(--danger)' }}>*</span>
+                        </label>
+                        <div style={{ position: 'relative' }}>
+                          <Mail size={16} style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                          <input
+                            type="email"
+                            name="supportEmail"
+                            className="form-control"
+                            style={{ paddingLeft: '2.5rem' }}
+                            placeholder="e.g. speddyprop@support.com"
+                            value={supportEmail}
+                            onChange={(e) => setSupportEmail(e.target.value)}
+                            required
+                            disabled={generalSettingsSaving}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Support Phone Number */}
+                      <div className="form-group">
+                        <label className="form-label" style={{ fontWeight: 600 }}>
+                          Support Phone Number <span style={{ color: 'var(--danger)' }}>*</span>
+                        </label>
+                        <div style={{ position: 'relative' }}>
+                          <Phone size={16} style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                          <input
+                            type="tel"
+                            name="supportNumber"
+                            className="form-control"
+                            style={{ paddingLeft: '2.5rem' }}
+                            placeholder="e.g. 042374782"
+                            value={supportNumber}
+                            onChange={(e) => setSupportNumber(e.target.value)}
+                            required
+                            disabled={generalSettingsSaving}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              <div className="form-group">
-                <label className="form-label">Whitelisted Operator IP Ranges (Comma separated)</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={ipWhitelist}
-                  onChange={(e) => setIpWhitelist(e.target.value)}
-                  placeholder="e.g. 192.168.1.1, 10.0.0.*"
-                />
-              </div>
-
-              <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start', gap: '0.5rem' }}>
-                <Save size={16} />
-                <span>Save Security Policies</span>
-              </button>
+                  {/* Save Action */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-start', paddingTop: '0.5rem' }}>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={generalSettingsSaving || generalSettingsLoading}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1.5rem' }}
+                    >
+                      {generalSettingsSaving ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          <span>Saving Application Settings...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save size={16} />
+                          <span>Save Application Settings</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
             </form>
           )}
         </div>

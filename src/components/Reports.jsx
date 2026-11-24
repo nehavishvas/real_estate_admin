@@ -43,6 +43,40 @@ import {
   AlertTriangle
 } from 'lucide-react';
 
+// Default daily leads data matching API structure
+const defaultDailyLeads = [
+  { date: "2026-09-01", day: 1, count: 2 },
+  { date: "2026-09-02", day: 2, count: 0 },
+  { date: "2026-09-03", day: 3, count: 1 },
+  { date: "2026-09-04", day: 4, count: 1 },
+  { date: "2026-09-05", day: 5, count: 3 },
+  { date: "2026-09-06", day: 6, count: 0 },
+  { date: "2026-09-07", day: 7, count: 6 },
+  { date: "2026-09-08", day: 8, count: 0 },
+  { date: "2026-09-09", day: 9, count: 0 },
+  { date: "2026-09-10", day: 10, count: 6 },
+  { date: "2026-09-11", day: 11, count: 3 },
+  { date: "2026-09-12", day: 12, count: 0 },
+  { date: "2026-09-13", day: 13, count: 0 },
+  { date: "2026-09-14", day: 14, count: 1 },
+  { date: "2026-09-15", day: 15, count: 0 },
+  { date: "2026-09-16", day: 16, count: 0 },
+  { date: "2026-09-17", day: 17, count: 0 },
+  { date: "2026-09-18", day: 18, count: 0 },
+  { date: "2026-09-19", day: 19, count: 0 },
+  { date: "2026-09-20", day: 20, count: 0 },
+  { date: "2026-09-21", day: 21, count: 0 },
+  { date: "2026-09-22", day: 22, count: 0 },
+  { date: "2026-09-23", day: 23, count: 0 },
+  { date: "2026-09-24", day: 24, count: 0 },
+  { date: "2026-09-25", day: 25, count: 0 },
+  { date: "2026-09-26", day: 26, count: 0 },
+  { date: "2026-09-27", day: 27, count: 0 },
+  { date: "2026-09-28", day: 28, count: 0 },
+  { date: "2026-09-29", day: 29, count: 0 },
+  { date: "2026-09-30", day: 30, count: 0 }
+];
+
 export default function Reports() {
   const {
     adminUser,
@@ -53,7 +87,7 @@ export default function Reports() {
     addAuditLog: onAddAuditLog
   } = useStateContext();
 
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.1.98:5000/api';
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://mobappssolutiondevelopment.com/kleverProp/api';
 
   // Navigation Tabs: The 8 requested sections
   const [activeTab, setActiveTab] = useState('user_activity');
@@ -193,7 +227,7 @@ export default function Reports() {
     const totalUsers = userActivityData?.cards?.totalUsers ?? dashboardStats?.users?.total ?? dashboardStats?.totalUsers ?? (usersList.length > 0 ? usersList.length : 12);
     const totalProps = dashboardStats?.properties?.total ?? dashboardStats?.totalProperties ?? (propertiesList.length > 0 ? propertiesList.length : 842);
     const totalRealtors = agentActivityData?.cards?.totalAgents ?? dashboardStats?.agents?.total ?? dashboardStats?.realtors?.total ?? dashboardStats?.totalRealtors ?? (realtorsList.length > 0 ? realtorsList.length : 11);
-    const totalLeads = leadsReportData?.cards?.totalLeads ?? dashboardStats?.leads?.total ?? dashboardStats?.totalLeads ?? 15;
+    const totalLeads = leadsReportData?.cards?.totalLeads ?? dashboardStats?.leads?.total ?? dashboardStats?.totalLeads ?? 23;
     const totalAiSearches = aiSearchReportData?.cards?.totalAiSearches ?? dashboardStats?.totalAiSearches ?? 26;
     const totalSearches = propertySearchReportData?.cards?.totalSearches ?? propertySearchReportData?.cards?.totalPropertySearches ?? searchAnalyticsData?.totalSearches ?? 73;
     const totalSaved = savedPropertiesReportData?.cards?.totalSavedProperties ?? savedPropertiesReportData?.cards?.totalSaved ?? savedPropertiesReportData?.cards?.totalSaves ?? 19;
@@ -322,13 +356,28 @@ export default function Reports() {
         ];
       }
     } else if (activeTab === 'leads') {
-      headers = ['Funnel Stage', 'Lead Inquiries', 'Percentage of Total', 'Avg Conversion Days', 'Est. Pipeline Value'];
-      rows = [
-        ['Total Inquiries Captured', '1,489', '100%', '0 Days', '$572M USD'],
-        ['Contacted & Qualified', '1,162', '78.0%', '2.4 Days', '$446M USD'],
-        ['In Negotiation', '625', '42.0%', '8.5 Days', '$240M USD'],
-        ['Won / Closed Purchases', '334', '22.4%', '24.0 Days', '$128M USD']
-      ];
+      const dailyLeads = Array.isArray(leadsReportData?.dailyLeads) && leadsReportData.dailyLeads.length > 0
+        ? leadsReportData.dailyLeads
+        : defaultDailyLeads;
+      if (dailyLeads.length > 0) {
+        headers = ['Date', 'Day', 'Leads Captured', 'Selected Month'];
+        rows = dailyLeads.map(d => [d.date, `Day ${d.day}`, d.count || 0, selectedMonth]);
+      } else {
+        const cards = leadsReportData?.cards || {};
+        const total = cards.totalLeads ?? 23;
+        const pending = cards.pending ?? 13;
+        const approved = cards.approved ?? 4;
+        const completed = cards.completed ?? 5;
+        const rejected = cards.rejected ?? 1;
+        headers = ['Status Stage', 'Lead Inquiries', 'Percentage of Total', 'Pipeline Status'];
+        rows = [
+          ['Total Leads', `${total}`, '100%', 'All Captured'],
+          ['Pending', `${pending}`, `${Math.round((pending / total) * 100)}%`, 'Awaiting Review'],
+          ['Approved', `${approved}`, `${Math.round((approved / total) * 100)}%`, 'Approved Inquiries'],
+          ['Completed', `${completed}`, `${Math.round((completed / total) * 100)}%`, 'Closed & Won'],
+          ['Rejected', `${rejected}`, `${Math.round((rejected / total) * 100)}%`, 'Declined / Lost']
+        ];
+      }
     } else if (activeTab === 'agent_activity') {
       headers = ['Brokerage Agency', 'Total Agents', 'Verified Licenses', 'Active Listed Assets', 'Avg Response Time'];
       rows = [
@@ -1987,31 +2036,31 @@ export default function Reports() {
     // Dynamic values from /admin/reports/leads?month=YYYY-MM
     const cards = leadsReportData?.cards || leadsReportData || {};
     const filter = leadsReportData?.filter || {};
-    const dailyLeads = Array.isArray(leadsReportData?.dailyLeads) ? leadsReportData.dailyLeads : [];
+    const dailyLeads = Array.isArray(leadsReportData?.dailyLeads) && leadsReportData.dailyLeads.length > 0
+      ? leadsReportData.dailyLeads
+      : defaultDailyLeads;
 
-    const totalLeads = cards.totalLeads ?? 15;
-    const pending = cards.pending ?? 14;
-    const contacted = cards.contacted ?? 1;
-    const qualified = cards.qualified ?? 0;
-    const lost = cards.lost ?? 0;
-    const won = cards.won ?? 0;
+    const totalLeads = Number(cards.totalLeads ?? 23);
+    const pending = Number(cards.pending ?? 13);
+    const approved = Number(cards.approved ?? cards.qualified ?? 4);
+    const completed = Number(cards.completed ?? cards.won ?? 5);
+    const rejected = Number(cards.rejected ?? cards.lost ?? 1);
 
     const monthName = filter.monthName || 'September';
     const year = filter.year || 2026;
     const daysInMonth = filter.daysInMonth || (dailyLeads.length || 30);
-    const totalLeadsInMonth = filter.totalLeadsInMonth ?? 13;
+    const totalLeadsInMonth = Number(filter.totalLeadsInMonth ?? 23);
     const maxCount = Math.max(1, ...dailyLeads.map(d => d.count || 0));
 
     const totalCalculated = Math.max(1, totalLeads);
     const pendingPct = Math.round((pending / totalCalculated) * 100);
-    const contactedPct = Math.round((contacted / totalCalculated) * 100);
-    const qualifiedPct = Math.round((qualified / totalCalculated) * 100);
-    const wonPct = Math.round((won / totalCalculated) * 100);
-    const lostPct = Math.round((lost / totalCalculated) * 100);
+    const approvedPct = Math.round((approved / totalCalculated) * 100);
+    const completedPct = Math.round((completed / totalCalculated) * 100);
+    const rejectedPct = Math.round((rejected / totalCalculated) * 100);
 
     return (
       <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
-        {/* Top 7 KPI Cards from API */}
+        {/* Top 5 KPI Cards from API */}
         <div className="reports-kpi-grid">
           {/* 1. Total Leads */}
           <div className="glass-panel" style={{ padding: '1.25rem' }}>
@@ -2033,58 +2082,45 @@ export default function Reports() {
             </div>
             <h3 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--warning)' }}>{pending}</h3>
             <span style={{ fontSize: '0.7rem', color: 'var(--warning)', display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.25rem' }}>
-              <Clock size={12} /> Awaiting Outreach ({pendingPct}%)
+              <Clock size={12} /> Awaiting Review ({pendingPct}%)
             </span>
           </div>
 
-          {/* 3. Contacted Leads */}
+          {/* 3. Approved Leads */}
           <div className="glass-panel" style={{ padding: '1.25rem' }}>
             <div className="flex-between" style={{ marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Contacted Leads</span>
-              <CheckCircle2 size={16} className="text-info" />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Approved Leads</span>
+              <ShieldCheck size={16} className="text-info" />
             </div>
-            <h3 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--info)' }}>{contacted}</h3>
+            <h3 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--info)' }}>{approved}</h3>
             <span style={{ fontSize: '0.7rem', color: 'var(--info)', display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.25rem' }}>
-              <CheckCircle2 size={12} /> In Outreach ({contactedPct}%)
+              <CheckCircle2 size={12} /> Approved Inquiries ({approvedPct}%)
             </span>
           </div>
 
-          {/* 4. Qualified Leads */}
+          {/* 4. Completed Deals */}
           <div className="glass-panel" style={{ padding: '1.25rem' }}>
             <div className="flex-between" style={{ marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Qualified Leads</span>
-              <Sparkles size={16} className="text-primary" />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Completed Deals</span>
+              <Award size={16} className="text-success" />
             </div>
-            <h3 style={{ fontSize: '1.6rem', fontWeight: 800, color: qualified > 0 ? 'var(--primary)' : 'var(--text-muted)' }}>{qualified}</h3>
-            <span style={{ fontSize: '0.7rem', color: qualified > 0 ? 'var(--primary)' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.25rem' }}>
-              <Sparkles size={12} /> Qualified ({qualifiedPct}%)
+            <h3 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--success)' }}>{completed}</h3>
+            <span style={{ fontSize: '0.7rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.25rem' }}>
+              <CheckCircle2 size={12} /> Closed & Won ({completedPct}%)
             </span>
           </div>
 
-          {/* 5. Won Deals */}
+          {/* 5. Rejected Leads */}
           <div className="glass-panel" style={{ padding: '1.25rem' }}>
             <div className="flex-between" style={{ marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Won Deals</span>
-              <ShieldCheck size={16} className="text-success" />
-            </div>
-            <h3 style={{ fontSize: '1.6rem', fontWeight: 800, color: won > 0 ? 'var(--success)' : 'var(--text-muted)' }}>{won}</h3>
-            <span style={{ fontSize: '0.7rem', color: won > 0 ? 'var(--success)' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.25rem' }}>
-              <CheckCircle2 size={12} /> Closed Deals ({wonPct}%)
-            </span>
-          </div>
-
-          {/* 6. Lost Leads */}
-          <div className="glass-panel" style={{ padding: '1.25rem' }}>
-            <div className="flex-between" style={{ marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Lost Leads</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Rejected Leads</span>
               <XCircle size={16} className="text-danger" />
             </div>
-            <h3 style={{ fontSize: '1.6rem', fontWeight: 800, color: lost > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{lost}</h3>
-            <span style={{ fontSize: '0.7rem', color: lost > 0 ? 'var(--danger)' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.25rem' }}>
-              Disqualified ({lostPct}%)
+            <h3 style={{ fontSize: '1.6rem', fontWeight: 800, color: rejected > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{rejected}</h3>
+            <span style={{ fontSize: '0.7rem', color: rejected > 0 ? 'var(--danger)' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.25rem' }}>
+              Declined / Lost ({rejectedPct}%)
             </span>
           </div>
-
         </div>
 
         {/* Daily Leads Bar Chart Card */}
@@ -2105,8 +2141,10 @@ export default function Reports() {
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <span className="badge badge-primary">{totalLeadsInMonth} Total in Month</span>
-              <span className="badge badge-warning">{pending} Pending Outreach</span>
-              <span className="badge badge-info">{contacted} Contacted</span>
+              <span className="badge badge-warning">{pending} Pending</span>
+              <span className="badge badge-info">{approved} Approved</span>
+              <span className="badge badge-success">{completed} Completed</span>
+              <span className="badge badge-danger">{rejected} Rejected</span>
             </div>
           </div>
 
@@ -2241,92 +2279,6 @@ export default function Reports() {
           </div>
         </div>
 
-        {/* Lead Pipeline Breakdown Cards */}
-        {/* <div className="reports-dual-grid">
-          <div className="glass-panel" style={{ padding: '1.5rem' }}>
-            <h3 style={{ fontSize: '1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <TrendingUp size={16} className="text-primary" />
-              Lead Pipeline Stage Distribution
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div>
-                <div className="flex-between" style={{ fontSize: '0.8125rem', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.25rem' }}>
-                  <span style={{ fontWeight: 600 }}>Pending Review & Assignment</span>
-                  <strong style={{ color: 'var(--warning)' }}>{pending} leads ({pendingPct}%)</strong>
-                </div>
-                <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px' }}>
-                  <div style={{ width: `${Math.max(pending > 0 ? 5 : 0, pendingPct)}%`, height: '100%', background: 'var(--warning)', borderRadius: '4px' }} />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex-between" style={{ fontSize: '0.8125rem', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.25rem' }}>
-                  <span style={{ fontWeight: 600 }}>Contacted & In Outreach</span>
-                  <strong style={{ color: 'var(--info)' }}>{contacted} leads ({contactedPct}%)</strong>
-                </div>
-                <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px' }}>
-                  <div style={{ width: `${Math.max(contacted > 0 ? 5 : 0, contactedPct)}%`, height: '100%', background: 'var(--info)', borderRadius: '4px' }} />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex-between" style={{ fontSize: '0.8125rem', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.25rem' }}>
-                  <span style={{ fontWeight: 600 }}>Qualified Buyer Prospects</span>
-                  <strong style={{ color: 'var(--primary)' }}>{qualified} leads ({qualifiedPct}%)</strong>
-                </div>
-                <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px' }}>
-                  <div style={{ width: `${Math.max(qualified > 0 ? 5 : 0, qualifiedPct)}%`, height: '100%', background: 'var(--primary)', borderRadius: '4px' }} />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex-between" style={{ fontSize: '0.8125rem', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.25rem' }}>
-                  <span style={{ fontWeight: 600 }}>Won / Closed Deals</span>
-                  <strong style={{ color: 'var(--success)' }}>{won} leads ({wonPct}%)</strong>
-                </div>
-                <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px' }}>
-                  <div style={{ width: `${Math.max(won > 0 ? 5 : 0, wonPct)}%`, height: '100%', background: 'var(--success)', borderRadius: '4px' }} />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex-between" style={{ fontSize: '0.8125rem', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.25rem' }}>
-                  <span style={{ fontWeight: 600 }}>Lost / Disqualified</span>
-                  <strong style={{ color: 'var(--danger)' }}>{lost} leads ({lostPct}%)</strong>
-                </div>
-                <div style={{ width: '100%', height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px' }}>
-                  <div style={{ width: `${Math.max(lost > 0 ? 5 : 0, lostPct)}%`, height: '100%', background: 'var(--danger)', borderRadius: '4px' }} />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="glass-panel" style={{ padding: '1.5rem' }}>
-            <h3 style={{ fontSize: '1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <ShieldCheck size={16} className="text-success" />
-              Lead Conversion & Velocity Summary
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', fontSize: '0.85rem' }}>
-              <div className="flex-between" style={{ paddingBottom: '0.75rem', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '0.25rem' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Total Month Captured Inquiries</span>
-                <strong style={{ color: 'var(--primary)' }}>{totalLeadsInMonth} leads in {monthName}</strong>
-              </div>
-              <div className="flex-between" style={{ paddingBottom: '0.75rem', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '0.25rem' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Active Outreach Pipeline</span>
-                <strong style={{ color: 'var(--info)' }}>{contacted + qualified} qualified / in progress</strong>
-              </div>
-              <div className="flex-between" style={{ paddingBottom: '0.75rem', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '0.25rem' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Awaiting First Contact</span>
-                <strong style={{ color: 'var(--warning)' }}>{pending} pending leads</strong>
-              </div>
-              <div className="flex-between" style={{ flexWrap: 'wrap', gap: '0.25rem' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Total Registered Leads in DB</span>
-                <strong style={{ color: 'var(--success)' }}>{totalLeads} total records</strong>
-              </div>
-            </div>
-          </div>
-        </div> */}
-
         {/* Daily Leads Table (50vh scroll) */}
         <div className="glass-panel" style={{ padding: '1.5rem', width: '100%' }}>
           <div className="flex-between" style={{ marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -2355,14 +2307,14 @@ export default function Reports() {
                     <td style={{ fontWeight: 600 }}>{d.date}</td>
                     <td>Day {d.day}</td>
                     <td>
-                      <span className={`badge ${d.count > 0 ? 'badge-primary' : 'badge-info'}`}>
+                      <span className={`badge ${d.count >= 5 ? 'badge-success' : d.count > 0 ? 'badge-primary' : 'badge-info'}`}>
                         {d.count} {d.count === 1 ? 'lead' : 'leads'}
                       </span>
                     </td>
                     <td>
                       {d.count > 0 ? (
-                        <span style={{ color: 'var(--primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem' }}>
-                          <CheckCircle2 size={12} /> Active Inquiries Received
+                        <span style={{ color: d.count >= 5 ? 'var(--success)' : 'var(--primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem' }}>
+                          <CheckCircle2 size={12} /> Active Inquiries Received ({d.count})
                         </span>
                       ) : (
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No leads</span>

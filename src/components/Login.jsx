@@ -41,7 +41,7 @@ export default function Login() {
     setError('');
 
     try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.1.98:5000/api';
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://mobappssolutiondevelopment.com/kleverProp/api';
       const response = await axios.post(`${baseUrl}/users/login`, {
         email: username,
         password: password,
@@ -67,23 +67,25 @@ export default function Login() {
         }
       };
 
-      // 30 minutes validity (or from JWT exp claim)
+      // 7 days session validity (or from JWT exp claim)
       const jwtExpMs = parseJwtExpMs(accessToken);
-      const expiresAt = jwtExpMs || (Date.now() + 30 * 60 * 1000);
+      const default7DaysMs = Date.now() + 7 * 24 * 60 * 60 * 1000;
+      const expiresAt = jwtExpMs || default7DaysMs;
+      const remainingDays = Math.max(1, Math.ceil((expiresAt - Date.now()) / (24 * 60 * 60 * 1000)));
 
-      // Persist auth tokens in cookie (30 min expiration)
-      setCookieMinutes('klever_auth_data', {
+      // Persist auth tokens in cookie (7 days)
+      setCookie('klever_auth_data', {
         user: userObj,
         token: accessToken,
         accessToken: accessToken,
         refreshToken: refreshToken,
         expiresAt: expiresAt,
         tokenExpiresAt: expiresAt
-      }, 30);
+      }, remainingDays);
 
       // Also set token directly for fallback compatibility
       if (accessToken) {
-        setCookieMinutes('token', accessToken, 30);
+        setCookie('token', accessToken, remainingDays);
       }
 
       // If refresh token exists, store in dedicated cookie
@@ -137,7 +139,7 @@ export default function Login() {
     setError('');
 
     try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.1.98:5000/api';
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://mobappssolutiondevelopment.com/kleverProp/api';
       
       const token = adminUser?.token || 
         getCookie('token') || 
@@ -190,7 +192,7 @@ export default function Login() {
     setError('');
 
     try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.1.98:5000/api';
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://mobappssolutiondevelopment.com/kleverProp/api';
       const token = adminUser?.token || 
         getCookie('token') || 
         getCookie('klever_auth_data')?.data?.accessToken || 
@@ -252,7 +254,7 @@ export default function Login() {
     setError('');
 
     try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.1.98:5000/api';
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://mobappssolutiondevelopment.com/kleverProp/api';
       const token = adminUser?.token || 
         getCookie('token') || 
         getCookie('klever_auth_data')?.data?.accessToken || 
@@ -830,7 +832,7 @@ export default function Login() {
           <span>© {new Date().getFullYear()} SpeddyProp. Enterprise Operations.</span>
           <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
             <Shield size={13} color="var(--primary)" />
-            TLS 256-bit Encrypted Session • 30-Min JWT Token Auth
+            TLS 256-bit Encrypted Session • 7-Day JWT Token Auth
           </span>
         </div>
       </div>

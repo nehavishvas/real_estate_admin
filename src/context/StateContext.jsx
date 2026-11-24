@@ -31,7 +31,7 @@ export function StateContextProvider({ children }) {
     const userObj = cookieData.data?.user || cookieData.user;
     const tokenVal = cookieData.data?.accessToken || cookieData.data?.token || cookieData.accessToken || cookieData.token;
     const refreshTokenVal = cookieData.data?.refreshToken || cookieData.refreshToken || '';
-    const expiresAtVal = cookieData.data?.expiresAt || cookieData.expiresAt || null;
+    let expiresAtVal = cookieData.data?.expiresAt || cookieData.expiresAt || null;
 
     // Check if session has expired or token is missing (30-minute validity)
     if (!tokenVal || (expiresAtVal && Date.now() > expiresAtVal)) {
@@ -42,9 +42,15 @@ export function StateContextProvider({ children }) {
     }
 
     const rawAvatar = userObj?.profileImage || userObj?.avatar || '';
-    const serverUrl = (import.meta.env.VITE_API_BASE_URL || 'http://192.168.1.98:5000/api').replace(/\/api$/, '');
-    const avatarUrl = rawAvatar 
-      ? (rawAvatar.startsWith('http') ? rawAvatar : `${serverUrl}${rawAvatar.startsWith('/') ? '' : '/'}${rawAvatar}`)
+    let cleanAvatar = (typeof rawAvatar === 'string' ? rawAvatar : '').trim().replace(/\\/g, '/');
+    if (/^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?/i.test(cleanAvatar)) {
+      cleanAvatar = cleanAvatar.replace(/^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?/, '');
+    }
+    const imageBaseUrl = import.meta.env.VITE_IMAGE_URL || (import.meta.env.VITE_API_BASE_URL ? import.meta.env.VITE_API_BASE_URL.replace(/\/api\/?$/, '') : '') || 'https://mobappssolutiondevelopment.com/kleverProp';
+    const avatarUrl = cleanAvatar 
+      ? (cleanAvatar.startsWith('http://') || cleanAvatar.startsWith('https://') || cleanAvatar.startsWith('blob:') || cleanAvatar.startsWith('data:')
+          ? cleanAvatar 
+          : `${imageBaseUrl.replace(/\/+$/, '')}/${cleanAvatar.replace(/^\/+/, '')}`)
       : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80';
 
     return {
@@ -105,7 +111,7 @@ export function StateContextProvider({ children }) {
 
     try {
       setNotificationsLoading(true);
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.1.98:5000/api';
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://mobappssolutiondevelopment.com/kleverProp/api';
 
       const [listRes, countRes] = await Promise.allSettled([
         axios.get(`${baseUrl}/users/notifications`, {
@@ -218,7 +224,7 @@ export function StateContextProvider({ children }) {
 
     if (token) {
       try {
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.1.98:5000/api';
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://mobappssolutiondevelopment.com/kleverProp/api';
         try {
           await axios.put(`${baseUrl}/users/notifications/read-all`, {}, {
             headers: { Authorization: `Bearer ${token}` }
@@ -253,7 +259,7 @@ export function StateContextProvider({ children }) {
     const token = getAuthToken();
     if (token) {
       try {
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.1.98:5000/api';
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://mobappssolutiondevelopment.com/kleverProp/api';
         await axios.delete(`${baseUrl}/users/notifications/${id}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -390,7 +396,7 @@ export function StateContextProvider({ children }) {
     }
 
     try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.1.98:5000/api';
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://mobappssolutiondevelopment.com/kleverProp/api';
       const payload = { refreshToken: currentRefreshToken };
       const config = {
         headers: {
@@ -431,8 +437,9 @@ export function StateContextProvider({ children }) {
         }
       };
 
-      const newExpiresAt = parseJwtExp(newAccessToken) || (Date.now() + 30 * 60 * 1000);
-      const validityMinutes = Math.max(1, Math.round((newExpiresAt - Date.now()) / (60 * 1000)));
+      const jwtExp = parseJwtExp(newAccessToken);
+      const newExpiresAt = jwtExp || (Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const remainingDays = Math.max(1, Math.ceil((newExpiresAt - Date.now()) / (24 * 60 * 60 * 1000)));
 
       // Update in-memory user state
       setAdminUser(prev => {
@@ -457,7 +464,7 @@ export function StateContextProvider({ children }) {
           refreshToken: newRefreshToken,
           token: newAccessToken,
           expiresAt: newExpiresAt,
-          expiresIn: 1800
+          expiresIn: remainingDays * 86400
         },
         token: newAccessToken,
         accessToken: newAccessToken,
@@ -465,8 +472,8 @@ export function StateContextProvider({ children }) {
         expiresAt: newExpiresAt
       };
 
-      setCookieMinutes('klever_auth_data', updatedCookie, validityMinutes || 30);
-      setCookieMinutes('token', newAccessToken, validityMinutes || 30);
+      setCookie('klever_auth_data', updatedCookie, remainingDays);
+      setCookie('token', newAccessToken, remainingDays);
       if (newRefreshToken) {
         setCookie('klever_refresh_token', newRefreshToken, 7);
       }

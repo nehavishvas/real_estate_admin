@@ -6,10 +6,11 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
     plugins: [react()],
+    base: '/realEstate/',
     server: {
       proxy: {
         '/api': {
-          target: env.VITE_API_BASE_URL || 'http://192.168.1.98:5000/api',
+          target: env.VITE_API_BASE_URL,
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api/, '')
         }
@@ -17,4 +18,3 @@ export default defineConfig(({ mode }) => {
     }
   }
 })
-

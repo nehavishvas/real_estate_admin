@@ -95,7 +95,7 @@ export default function AdminLayout() {
               <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>Speddy Control</span>
               <span style={{ color: 'var(--text-muted)' }}>/</span>
               <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)', textTransform: 'capitalize' }}>
-                {activeTab === 'ai' ? 'AI configuration' : activeTab}
+                {activeTab === 'ai' ? 'AI configuration' : activeTab === 'agencies' ? 'Agency Management' : activeTab === 'tiers' ? 'Tier Management' : activeTab === 'terms' ? 'Terms & Conditions' : activeTab === 'terms-edit' ? 'Edit Terms & Conditions' : activeTab === 'privacy-policy' ? 'Privacy Policy' : activeTab === 'privacy-policy-edit' || activeTab === 'privacy-edit' ? 'Edit Privacy Policy' : activeTab}
               </span>
             </div>
           </div>

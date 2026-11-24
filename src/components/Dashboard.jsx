@@ -233,8 +233,8 @@ export default function Dashboard() {
 
   // 4. Leads Metrics
   const leadsMetric = formatTrendData(
-    dashboardData?.leads,
-    dashboardData?.totalLeads ?? dashboardData?.leadsCount ?? dashboardData?.leadsGenerated ?? dashboardData?.totalLeadsGenerated ?? 0,
+    dashboardData?.leads || dashboardData?.leadStatuses,
+    dashboardData?.totalLeads ?? dashboardData?.leadsCount ?? dashboardData?.leadsGenerated ?? dashboardData?.totalLeadsGenerated ?? dashboardData?.leadStatuses?.total ?? 25,
     dashboardData?.leadsChange || dashboardData?.leadsGrowth || dashboardData?.conversionRate,
     'Client inquiries & leads'
   );
@@ -289,28 +289,40 @@ export default function Dashboard() {
   // ================= LIVE DASHBOARD METRICS: LEAD STATUSES & AI SEARCH ANALYTICS =================
   const leadStatusesData = useMemo(() => {
     const raw = dashboardData?.leadStatuses || dashboardData?.leadsStatus || {};
-    const pending = Number(raw.pending ?? 12);
-    const contacted = Number(raw.contacted ?? 1);
-    const qualified = Number(raw.qualified ?? 2);
-    const won = Number(raw.won ?? 0);
-    const lost = Number(raw.lost ?? 0);
-    const total = Number(raw.total) || (pending + contacted + qualified + won + lost) || 15;
+    const hasRawData = Boolean(
+      raw && (
+        raw.pending !== undefined ||
+        raw.approved !== undefined ||
+        raw.completed !== undefined ||
+        raw.rejected !== undefined ||
+        raw.closed !== undefined ||
+        raw.close !== undefined ||
+        raw.total !== undefined
+      )
+    );
+    const pending = Number(raw.pending ?? (hasRawData ? 0 : 15));
+    const approved = Number(raw.approved ?? raw.qualified ?? raw.contacted ?? (hasRawData ? 0 : 4));
+    const completed = Number(raw.completed ?? raw.won ?? (hasRawData ? 0 : 5));
+    const rejected = Number(raw.rejected ?? raw.lost ?? (hasRawData ? 0 : 1));
+    const closed = Number(raw.closed ?? raw.close ?? 0);
+    const calculatedSum = pending + approved + completed + rejected + closed;
+    const total = raw.total !== undefined && raw.total !== null ? Number(raw.total) : (hasRawData ? calculatedSum : 25);
 
     const calcPct = (val) => (total > 0 ? ((val / total) * 100).toFixed(1) : '0.0');
 
     return {
       total,
       pending,
-      contacted,
-      qualified,
-      won,
-      lost,
+      approved,
+      completed,
+      rejected,
+      closed,
       items: [
-        { key: 'pending', label: 'Pending Inquiry', count: pending, pct: calcPct(pending), color: '#fab319', bg: 'rgba(250, 179, 25, 0.08)', border: 'rgba(250, 179, 25, 0.25)' },
-        { key: 'contacted', label: 'Contacted', count: contacted, pct: calcPct(contacted), color: '#6366f1', bg: 'rgba(99, 102, 241, 0.08)', border: 'rgba(99, 102, 241, 0.25)' },
-        { key: 'qualified', label: 'Qualified Prospect', count: qualified, pct: calcPct(qualified), color: '#10b981', bg: 'rgba(16, 185, 129, 0.08)', border: 'rgba(16, 185, 129, 0.25)' },
-        { key: 'won', label: 'Won / Converted', count: won, pct: calcPct(won), color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.08)', border: 'rgba(6, 182, 212, 0.25)' },
-        { key: 'lost', label: 'Lost / Dropped', count: lost, pct: calcPct(lost), color: '#ef4444', bg: 'rgba(239, 68, 68, 0.08)', border: 'rgba(239, 68, 68, 0.25)' }
+        { key: 'pending', label: 'Pending', count: pending, pct: calcPct(pending), color: '#fab319', bg: 'rgba(250, 179, 25, 0.08)', border: 'rgba(250, 179, 25, 0.25)' },
+        { key: 'approved', label: 'Approved', count: approved, pct: calcPct(approved), color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.08)', border: 'rgba(59, 130, 246, 0.25)' },
+        { key: 'completed', label: 'Completed', count: completed, pct: calcPct(completed), color: '#10b981', bg: 'rgba(16, 185, 129, 0.08)', border: 'rgba(16, 185, 129, 0.25)' },
+        { key: 'rejected', label: 'Rejected', count: rejected, pct: calcPct(rejected), color: '#ef4444', bg: 'rgba(239, 68, 68, 0.08)', border: 'rgba(239, 68, 68, 0.25)' },
+        { key: 'closed', label: 'Closed', count: closed, pct: calcPct(closed), color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.08)', border: 'rgba(139, 92, 246, 0.25)' }
       ]
     };
   }, [dashboardData]);
@@ -929,7 +941,7 @@ export default function Dashboard() {
             </div>
 
             {/* Status Breakdown Pills & Progress */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
               {leadStatusesData.items.map((item) => {
                 const isHovered = hoveredLeadStatus === item.key;
                 return (
@@ -941,7 +953,7 @@ export default function Dashboard() {
                       background: isHovered ? item.bg : 'rgba(255,255,255,0.4)',
                       border: `1px solid ${isHovered ? item.border : 'var(--border-color)'}`,
                       borderRadius: '8px',
-                      padding: '0.42rem 0.75rem',
+                      padding: '0.36rem 0.75rem',
                       transition: 'all 0.2s ease',
                       cursor: 'pointer'
                     }}
@@ -1482,7 +1494,7 @@ export default function Dashboard() {
 
             {/* 2. DONUT / RADIAL DISTRIBUTION MODE */}
             {searchDisplayMode === 'donut' && (
-              <div className="animate-fade-in" style={{
+              <div className="animate-fade-in grid-cols-2" style={{
                 display: 'grid',
                 gridTemplateColumns: '260px 1fr',
                 gap: '1.75rem',
@@ -1491,8 +1503,7 @@ export default function Dashboard() {
                 border: '1px solid var(--border-color)',
                 borderRadius: '12px',
                 padding: '1.5rem'
-              }} className="grid-cols-2">
-                
+              }}>
                 {/* Left: SVG Donut Chart */}
                 <div style={{ width: '230px', height: '230px', position: 'relative', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <svg viewBox="0 0 240 240" width="100%" height="100%" style={{ overflow: 'visible', transform: 'rotate(-90deg)' }}>
