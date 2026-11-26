@@ -24,7 +24,8 @@ import {
   LogOut,
   RefreshCw,
   Clock,
-  X
+  X,
+  HelpCircle
 } from 'lucide-react';
 
 export default function Sidebar({
@@ -137,7 +138,7 @@ export default function Sidebar({
     { id: 'agencies', label: 'Agency Management', icon: Building2, roles: ['Admin'] },
     { id: 'tiers', label: 'Tier Management', icon: Layers, roles: ['Admin'] },
     { id: 'properties', label: 'Property Management', icon: Home, roles: ['Admin'] },
-    { id: 'portals', label: 'Portal & API Sync', icon: CloudLightning, roles: ['Admin'] },
+    // { id: 'portals', label: 'Portal & API Sync', icon: CloudLightning, roles: ['Admin'] },
     // { id: 'ai', label: 'AI Management', icon: BrainCircuit, roles: ['Admin'] },
     { id: 'reports', label: 'Reports & Analytics', icon: BarChart3, roles: ['Admin'] },
     {
@@ -162,11 +163,20 @@ export default function Sidebar({
         { id: 'privacy-edit', label: 'Edit Content', path: '/privacy-policy-edit', icon: Edit3 }
       ]
     },
+    {
+      id: 'help-support-group',
+      label: 'Help & Support',
+      icon: HelpCircle,
+      roles: ['Admin'],
+      subItems: [
+        { id: 'help-support-edit', label: 'Edit Content', path: '/help-support-edit', icon: Edit3 }
+      ]
+    },
     { id: 'settings', label: 'System Settings', icon: Settings, roles: ['Admin'] },
     { id: 'logs', label: 'Audit & System Logs', icon: History, roles: ['Admin'] },
   ];
 
-  const visibleMenuItems = menuItems.filter(item => 
+  const visibleMenuItems = menuItems.filter(item =>
     item.roles.some(r => r.toLowerCase() === adminUser?.role?.toLowerCase())
   );
 
@@ -178,15 +188,15 @@ export default function Sidebar({
   return (
     <>
       {/* Mobile Backdrop overlay */}
-      <div 
-        className={`sidebar-overlay ${isMobileMenuOpen ? 'mobile-open' : ''}`} 
+      <div
+        className={`sidebar-overlay ${isMobileMenuOpen ? 'mobile-open' : ''}`}
         onClick={() => setIsMobileMenuOpen(false)}
       />
 
       <aside className={`sidebar-container ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
         {/* Brand Header with SpeddyProp Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem', paddingLeft: '0.25rem', position: 'relative' }}>
-          
+
           <div style={{
             background: '#ffffff',
             border: '1px solid rgba(250, 179, 25, 0.45)',
@@ -198,14 +208,14 @@ export default function Sidebar({
             boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)',
             flexShrink: 0
           }}>
-            <img 
-              src={logoImg} 
-              alt="SpeddyProp" 
-              style={{ 
-                width: '42px', 
-                height: '32px', 
+            <img
+              src={logoImg}
+              alt="SpeddyProp"
+              style={{
+                width: '42px',
+                height: '32px',
                 objectFit: 'contain'
-              }} 
+              }}
             />
           </div>
 
@@ -219,7 +229,7 @@ export default function Sidebar({
           </div>
 
           {/* Close button for Mobile screen */}
-          <button 
+          <button
             onClick={() => setIsMobileMenuOpen(false)}
             style={{
               position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)',
@@ -287,9 +297,9 @@ export default function Sidebar({
                         const SubIcon = sub.icon;
                         const fullCurrent = location.pathname + location.search;
                         const isSubActive = sub.path
-                          ? (fullCurrent === sub.path || 
-                             (sub.id === 'terms-en' && location.pathname === '/terms' && !location.search) ||
-                             (sub.id === 'privacy-en' && (location.pathname === '/privacy-policy' || location.pathname === '/privacy') && !location.search))
+                          ? (fullCurrent === sub.path ||
+                            (sub.id === 'terms-en' && location.pathname === '/terms' && !location.search) ||
+                            (sub.id === 'privacy-en' && (location.pathname === '/privacy-policy' || location.pathname === '/privacy') && !location.search))
                           : activeTab === sub.id;
                         return (
                           <button

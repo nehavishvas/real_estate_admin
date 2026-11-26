@@ -32,7 +32,8 @@ import {
   Edit2,
   DollarSign,
   Percent,
-  Sliders
+  Sliders,
+  Copy
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -503,167 +504,6 @@ export default function TierManagement() {
             <Download size={15} />
             <span>Export CSV</span>
           </button>
-        </div>
-      </div>
-
-      {/* 2. KPI Metrics Bar */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: '1.25rem',
-        marginBottom: '1.75rem'
-      }}>
-        {/* Total Tiers */}
-        <div className="glass-panel" style={{
-          padding: '1.35rem',
-          borderRadius: 'var(--radius-md)',
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Configured Tiers
-            </span>
-            <div style={{
-              width: '34px',
-              height: '34px',
-              borderRadius: '8px',
-              background: 'rgba(250, 179, 25, 0.15)',
-              color: '#b47404',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <Layers size={18} />
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.65rem' }}>
-            <span style={{ fontSize: '1.9rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-              {tiersList.length}
-            </span>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--success)' }}>
-              Active in System
-            </span>
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>
-            Level 1 (Basic) to Level 3 (Founding Sponsor)
-          </div>
-        </div>
-
-        {/* Highest Search Weight */}
-        <div className="glass-panel" style={{
-          padding: '1.35rem',
-          borderRadius: 'var(--radius-md)',
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Max Search AI Boost
-            </span>
-            <div style={{
-              width: '34px',
-              height: '34px',
-              borderRadius: '8px',
-              background: 'rgba(16, 185, 129, 0.15)',
-              color: 'var(--success)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <Zap size={18} />
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.65rem' }}>
-            <span style={{ fontSize: '1.9rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-              {maxSearchBoost}
-            </span>
-            <span className="badge badge-success" style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem' }}>
-              Top Priority
-            </span>
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>
-            Search algorithm priority multiplier
-          </div>
-        </div>
-
-        {/* Pro Agent Tier */}
-        <div className="glass-panel" style={{
-          padding: '1.35rem',
-          borderRadius: 'var(--radius-md)',
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {proTier?.name || 'Pro Plan (Tier 2)'}
-            </span>
-            <div style={{
-              width: '34px',
-              height: '34px',
-              borderRadius: '8px',
-              background: 'rgba(14, 165, 233, 0.15)',
-              color: 'var(--info)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <ShieldCheck size={18} />
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.65rem' }}>
-            <span style={{ fontSize: '1.9rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-              ${proTier ? (proTier.finalPrice ?? proTier.price ?? 49) : 49}
-            </span>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--info)' }}>
-              / month {proTier?.currency || 'USD'}
-            </span>
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>
-            Includes WhatsApp Leads & Blue Checkmark
-          </div>
-        </div>
-
-        {/* Sponsor Tier */}
-        <div className="glass-panel" style={{
-          padding: '1.35rem',
-          borderRadius: 'var(--radius-md)',
-          position: 'relative',
-          overflow: 'hidden',
-          border: '1px solid rgba(250, 179, 25, 0.35)',
-          background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(250, 248, 245, 0.8) 100%)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#b47404', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {sponsorTier?.name || 'Founding Sponsor (Tier 3)'}
-            </span>
-            <div style={{
-              width: '34px',
-              height: '34px',
-              borderRadius: '8px',
-              background: 'linear-gradient(135deg, #fab319 0%, #e09b0b 100%)',
-              color: '#0a1f39',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 2px 8px rgba(250, 179, 25, 0.4)'
-            }}>
-              <Sparkles size={18} />
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.65rem' }}>
-            <span style={{ fontSize: '1.9rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-              ${sponsorTier ? (sponsorTier.finalPrice ?? sponsorTier.price ?? 49) : 49}
-            </span>
-            {sponsorTier?.discountPercentage > 0 && (
-              <span className="badge badge-warning" style={{ fontSize: '0.7rem', padding: '0.15rem 0.45rem' }}>
-                {sponsorTier.discountPercentage}% OFF
-              </span>
-            )}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>
-            Shimmer Animation + Card Highlight + {sponsorTier?.searchAndAI?.searchPriorityWeight ?? 3}x Search
-          </div>
         </div>
       </div>
 
@@ -1266,19 +1106,53 @@ export default function TierManagement() {
       )}
 
       {/* ========================================================================= */}
-      {/* 5. TIER SPECIFICATION DRAWER (GET /admin/tiers/:id)                       */}
+      {/* 5. TIER SPECIFICATION MODAL (GET /admin/tiers/:id)                        */}
       {/* ========================================================================= */}
       {selectedTier && createPortal(
-        <div className="drawer-overlay" onClick={() => setSelectedTier(null)}>
-          <div className="drawer-content" onClick={(e) => e.stopPropagation()}>
-            <div className="drawer-header">
+        <div className="modal-overlay" onClick={() => setSelectedTier(null)}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '680px',
+              width: '100%',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden'
+            }}
+          >
+            <div className="modal-header" style={{
+              padding: '1rem 1.25rem',
+              borderBottom: '1px solid var(--border-color)',
+              background: '#faf8f5',
+              flexShrink: 0
+            }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <Layers size={20} style={{ color: 'var(--primary)' }} />
-                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>
-                  Tier Configuration Details
-                </h3>
+                <div style={{
+                  width: '34px',
+                  height: '34px',
+                  borderRadius: '8px',
+                  background: 'rgba(250, 179, 25, 0.15)',
+                  color: '#b47404',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <Layers size={18} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    Tier Configuration Details
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Level {selectedTier.tierLevel || 1} • {selectedTier.name}
+                  </p>
+                </div>
               </div>
               <button
+                type="button"
                 className="btn btn-ghost btn-sm btn-icon"
                 onClick={() => setSelectedTier(null)}
               >
@@ -1286,7 +1160,15 @@ export default function TierManagement() {
               </button>
             </div>
 
-            <div className="drawer-body">
+            <div className="modal-body" style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.25rem',
+              flex: 1,
+              minHeight: 0,
+              overflowY: 'auto',
+              padding: '1.25rem'
+            }}>
               {drawerLoading ? (
                 <div style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                   <Loader2 size={26} className="animate-spin" style={{ margin: '0 auto 0.75rem', color: 'var(--primary)' }} />
@@ -1299,8 +1181,7 @@ export default function TierManagement() {
                     background: 'linear-gradient(135deg, rgba(250, 179, 25, 0.12) 0%, rgba(10, 31, 57, 0.04) 100%)',
                     border: '1px solid var(--border-color)',
                     borderRadius: 'var(--radius-md)',
-                    padding: '1.5rem',
-                    marginBottom: '1.5rem'
+                    padding: '1.25rem'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -1311,7 +1192,7 @@ export default function TierManagement() {
                       </div>
                       {renderBadgePill(selectedTier.uiAppearance?.badgeType)}
                     </div>
-                    <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)', margin: '0.5rem 0' }}>
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', margin: '0.4rem 0' }}>
                       {selectedTier.name}
                     </h2>
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
@@ -1320,8 +1201,8 @@ export default function TierManagement() {
                   </div>
 
                   {/* Pricing Structure */}
-                  <div style={{ marginBottom: '1.5rem' }}>
-                    <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                  <div>
+                    <h4 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
                       Pricing & Discount Matrix
                     </h4>
                     {(() => {
@@ -1352,8 +1233,8 @@ export default function TierManagement() {
                   </div>
 
                   {/* Full Privileges Matrix */}
-                  <div style={{ marginBottom: '1.5rem' }}>
-                    <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                  <div>
+                    <h4 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
                       Privileges & Feature Capabilities
                     </h4>
                     <div style={{
@@ -1421,7 +1302,20 @@ export default function TierManagement() {
                     fontSize: '0.72rem',
                     color: 'var(--text-muted)'
                   }}>
-                    <div><strong>System ID:</strong> {selectedTier._id || selectedTier.id}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span><strong>System ID:</strong> <code>{selectedTier._id || selectedTier.id}</code></span>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm btn-icon"
+                        onClick={() => {
+                          navigator.clipboard.writeText(selectedTier._id || selectedTier.id);
+                          toast.success('Tier ID copied!');
+                        }}
+                        title="Copy System ID"
+                      >
+                        <Copy size={12} />
+                      </button>
+                    </div>
                     <div style={{ marginTop: '0.2rem' }}><strong>Created:</strong> {selectedTier.createdAt ? new Date(selectedTier.createdAt).toLocaleString() : 'N/A'}</div>
                     <div style={{ marginTop: '0.2rem' }}><strong>Last Updated:</strong> {selectedTier.updatedAt ? new Date(selectedTier.updatedAt).toLocaleString() : 'N/A'}</div>
                   </div>
@@ -1429,22 +1323,25 @@ export default function TierManagement() {
               )}
             </div>
 
-            <div className="drawer-footer" style={{
-              padding: '1.25rem 1.5rem',
+            <div className="modal-footer" style={{
+              padding: '1rem 1.25rem',
               borderTop: '1px solid var(--border-color)',
               background: '#faf8f5',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              gap: '0.75rem'
+              gap: '0.75rem',
+              flexShrink: 0
             }}>
               <button
+                type="button"
                 className="btn btn-secondary"
                 onClick={() => setSelectedTier(null)}
               >
                 Close
               </button>
               <button
+                type="button"
                 className="btn btn-primary"
                 onClick={() => {
                   const tierToEdit = selectedTier;

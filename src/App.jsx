@@ -21,10 +21,12 @@ import SettingsComponent from './components/Settings';
 import AuditLogs from './components/AuditLogs';
 import Profile from './components/Profile';
 import ChangePassword from './components/ChangePassword';
+import HelpSupport from './components/HelpSupport';
+import HelpSupportEdit from './components/HelpSupportEdit';
 
 export default function App() {
   const { adminUser } = useStateContext();
-  console.log("Date:21-11-2026, Time:-12:14")
+  console.log("Date:26-11-2026, Time:-18:25")
 
   return (
     <>
@@ -64,6 +66,8 @@ export default function App() {
           <Route path="/terms-and-conditions" element={<Navigate to="/terms" replace />} />
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           <Route path="/privacy" element={<Navigate to="/privacy-policy" replace />} />
+          <Route path="/help-support" element={<HelpSupport />} />
+          <Route path="/help" element={<Navigate to="/help-support" replace />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       ) : (
@@ -75,6 +79,8 @@ export default function App() {
           {/* Standalone Privacy Policy View: Outside AdminLayout so NO sidebar and NO admin header */}
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           <Route path="/privacy" element={<Navigate to="/privacy-policy" replace />} />
+          <Route path="/help-support" element={<HelpSupport />} />
+          <Route path="/help" element={<Navigate to="/help-support" replace />} />
           <Route element={<AdminLayout />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
@@ -87,10 +93,13 @@ export default function App() {
             <Route path="/properties" element={<PropertyManagement />} />
             <Route path="/portals" element={<PortalManagement />} />
             <Route path="/ai" element={<AiManagement />} />
+
             <Route path="/reports" element={<Reports />} />
             <Route path="/terms-edit" element={<TermsAndConditionsEdit />} />
             <Route path="/privacy-policy-edit" element={<PrivacyPolicyEdit />} />
             <Route path="/privacy-edit" element={<Navigate to="/privacy-policy-edit" replace />} />
+            <Route path="/help-support-edit" element={<HelpSupportEdit />} />
+            <Route path="/help-edit" element={<Navigate to="/help-support-edit" replace />} />
             <Route path="/settings" element={<SettingsComponent />} />
             <Route path="/logs" element={<AuditLogs />} />
             <Route path="/profile" element={<Profile />} />

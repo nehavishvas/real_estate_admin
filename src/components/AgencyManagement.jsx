@@ -102,15 +102,19 @@ export default function AgencyManagement() {
     sponsors: 0
   });
 
-  // Add Agency Form State & Modal Control
+  // Add Agency Form State & Modal Control (Required fields on top, followed by optional sequence)
   const initialAddForm = {
+    // 1. Required fields on top
     name: '',
+    administratorName: '',
+    administratorPhone: '',
+    xmlFeedUrl: '',
+    // 2. Other fields in given sequence
+    administratorEmail: '',
     description: '',
     logoFile: null,
     logoPreview: '',
     website: '',
-    corporateEmail: '',
-    corporateCallCenterPhone: '',
     corporateWhatsapp: '',
     country: 'DO',
     region: '',
@@ -118,8 +122,6 @@ export default function AgencyManagement() {
     brandColorHex: '#002B49',
     tier: '',
     agentSeatsLimit: 10,
-    xmlFeedUrl: '',
-    autoSyncEnabled: true,
     syncSchedule: 'EVERY_6_HOURS'
   };
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -128,6 +130,9 @@ export default function AgencyManagement() {
 
   // Edit Form Fields
   const [formName, setFormName] = useState('');
+  const [formAdministratorName, setFormAdministratorName] = useState('');
+  const [formAdministratorPhone, setFormAdministratorPhone] = useState('');
+  const [formAdministratorEmail, setFormAdministratorEmail] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [formWebsite, setFormWebsite] = useState('');
   const [formCorporateEmail, setFormCorporateEmail] = useState('');
@@ -695,6 +700,30 @@ export default function AgencyManagement() {
     }
   };
 
+  // 5b. GET LIVE FEED SYNC STATUS: GET /admin/agency/:id/sync-status
+  const handleCheckSyncStatus = async (agencyId) => {
+    if (!agencyId) return;
+    try {
+      const token = getAuthToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const syncRes = await axios.get(`${baseUrl}/admin/agency/${agencyId}/sync-status`, { headers });
+      const syncData = syncRes.data?.data || syncRes.data;
+      if (syncData) {
+        setAgencyDetails(prev => ({
+          ...prev,
+          syncStatus: syncData.syncStatus || prev?.syncStatus,
+          lastSyncedAt: syncData.lastSyncedAt || prev?.lastSyncedAt,
+          syncStats: syncData.syncStats || prev?.syncStats,
+          activePropertiesCount: syncData.activePropertiesCount ?? prev?.activePropertiesCount
+        }));
+        toast.success(`Sync status: ${syncData.syncStatus || 'success'}. Catalog: ${syncData.activePropertiesCount ?? 0} properties.`);
+      }
+    } catch (err) {
+      console.warn('Failed to retrieve live sync status:', err);
+      toast.error('Could not refresh live sync status');
+    }
+  };
+
   // 6. TRIGGER BACKGROUND BATCH FEED SYNC: POST /admin/agency/sync-all-feeds
   const handleSyncAllFeeds = async () => {
     try {
@@ -763,6 +792,18 @@ export default function AgencyManagement() {
       toast.error('Agency commercial name is required');
       return;
     }
+    if (!addForm.administratorName.trim()) {
+      toast.error('Administrator name is required');
+      return;
+    }
+    if (!addForm.administratorPhone.trim()) {
+      toast.error('Administrator phone is required');
+      return;
+    }
+    if (!addForm.xmlFeedUrl.trim()) {
+      toast.error('XML Feed URL is required');
+      return;
+    }
 
     try {
       setAddLoading(true);
@@ -773,49 +814,63 @@ export default function AgencyManagement() {
       }
 
       const formData = new FormData();
+      // 1. name * (Required)
       formData.append('name', addForm.name.trim());
-      if (addForm.description.trim()) {
+      // 2. administratorName * (Required)
+      formData.append('administratorName', addForm.administratorName.trim());
+      // 3. administratorPhone * (Required)
+      formData.append('administratorPhone', addForm.administratorPhone.trim());
+      // 4. xmlFeedUrl * (Required)
+      formData.append('xmlFeedUrl', addForm.xmlFeedUrl.trim());
+
+      // 5. administratorEmail (Optional)
+      if (addForm.administratorEmail && addForm.administratorEmail.trim()) {
+        formData.append('administratorEmail', addForm.administratorEmail.trim());
+      }
+      // 6. description
+      if (addForm.description && addForm.description.trim()) {
         formData.append('description', addForm.description.trim());
       }
+      // 7. logo
       if (addForm.logoFile) {
         formData.append('logo', addForm.logoFile);
       }
-      if (addForm.website.trim()) {
+      // 8. website
+      if (addForm.website && addForm.website.trim()) {
         formData.append('website', addForm.website.trim());
       }
-      if (addForm.corporateEmail.trim()) {
-        formData.append('corporateEmail', addForm.corporateEmail.trim());
-      }
-      if (addForm.corporateCallCenterPhone.trim()) {
-        formData.append('corporateCallCenterPhone', addForm.corporateCallCenterPhone.trim());
-      }
-      if (addForm.corporateWhatsapp.trim()) {
+      // 9. corporateWhatsapp
+      if (addForm.corporateWhatsapp && addForm.corporateWhatsapp.trim()) {
         formData.append('corporateWhatsapp', addForm.corporateWhatsapp.trim());
       }
-      if (addForm.country.trim()) {
+      // 10. country
+      if (addForm.country && addForm.country.trim()) {
         formData.append('country', addForm.country.trim());
       }
-      if (addForm.region.trim()) {
+      // 11. region
+      if (addForm.region && addForm.region.trim()) {
         formData.append('region', addForm.region.trim());
       }
-      if (addForm.town.trim()) {
+      // 12. town
+      if (addForm.town && addForm.town.trim()) {
         formData.append('town', addForm.town.trim());
       }
-      if (addForm.brandColorHex.trim()) {
+      // 13. brandColorHex
+      if (addForm.brandColorHex && addForm.brandColorHex.trim()) {
         formData.append('brandColorHex', addForm.brandColorHex.trim());
       }
+      // 14. tier
       if (addForm.tier) {
         formData.append('tier', addForm.tier);
       }
+      // 15. agentSeatsLimit
       const seatsLimitNum = parseInt(addForm.agentSeatsLimit, 10);
       formData.append('agentSeatsLimit', !isNaN(seatsLimitNum) && seatsLimitNum >= 0 ? seatsLimitNum : 10);
-      if (addForm.xmlFeedUrl.trim()) {
-        formData.append('xmlFeedUrl', addForm.xmlFeedUrl.trim());
-      }
-      formData.append('autoSyncEnabled', addForm.autoSyncEnabled ? 'true' : 'false');
+      // 16. syncSchedule
       if (addForm.syncSchedule) {
         formData.append('syncSchedule', addForm.syncSchedule);
       }
+      formData.append('autoSyncEnabled', 'true');
 
       const res = await axios.post(`${baseUrl}/admin/agency`, formData, {
         headers: {
@@ -842,10 +897,14 @@ export default function AgencyManagement() {
   };
 
   // 6. OPEN EDIT MODAL
-  const handleOpenEdit = (agency, e) => {
+  const handleOpenEdit = async (agency, e) => {
     if (e) e.stopPropagation();
     setEditingAgency(agency);
+    const adminObj = (agency.administrator && typeof agency.administrator === 'object') ? agency.administrator : {};
     setFormName(agency.name || '');
+    setFormAdministratorName(adminObj.name || agency.administratorName || agency.adminName || agency.representativeName || '');
+    setFormAdministratorPhone(adminObj.phone || agency.administratorPhone || agency.adminPhone || agency.representativePhone || '');
+    setFormAdministratorEmail(adminObj.email || agency.administratorEmail || agency.adminEmail || agency.representativeEmail || '');
     setFormDescription(agency.description || '');
     setFormWebsite(agency.website || '');
     setFormCorporateEmail(agency.corporateEmail || '');
@@ -870,6 +929,24 @@ export default function AgencyManagement() {
     setFormLogoFile(null);
     setFormLogoPreview(getLogoUrl(agency.logo) || '');
     setFormLogoUrl(typeof agency.logo === 'string' ? agency.logo : '');
+
+    // If administrator details are not yet populated from list item, fetch by ID
+    const agencyId = agency._id || agency.id;
+    if (agencyId && !adminObj.name && !agency.administratorName) {
+      try {
+        const token = getAuthToken();
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const res = await axios.get(`${baseUrl}/admin/agency/${agencyId}`, { headers });
+        const detailed = res.data?.data?.agency || res.data?.data || res.data?.agency || res.data;
+        if (detailed && detailed.administrator && typeof detailed.administrator === 'object') {
+          if (detailed.administrator.name) setFormAdministratorName(detailed.administrator.name);
+          if (detailed.administrator.phone) setFormAdministratorPhone(detailed.administrator.phone);
+          if (detailed.administrator.email) setFormAdministratorEmail(detailed.administrator.email);
+        }
+      } catch (err) {
+        // silent fallback
+      }
+    }
   };
 
   const handleLogoFileChange = (e) => {
@@ -913,6 +990,9 @@ export default function AgencyManagement() {
         // Multipart payload with logo file
         const formData = new FormData();
         formData.append('name', formName.trim());
+        if (formAdministratorName.trim()) formData.append('administratorName', formAdministratorName.trim());
+        if (formAdministratorPhone.trim()) formData.append('administratorPhone', formAdministratorPhone.trim());
+        if (formAdministratorEmail.trim()) formData.append('administratorEmail', formAdministratorEmail.trim());
         formData.append('description', formDescription.trim());
         formData.append('website', formWebsite.trim());
         formData.append('corporateEmail', formCorporateEmail.trim());
@@ -951,6 +1031,9 @@ export default function AgencyManagement() {
         // JSON payload matching Swagger schema
         const jsonPayload = {
           name: formName.trim(),
+          ...(formAdministratorName.trim() ? { administratorName: formAdministratorName.trim() } : {}),
+          ...(formAdministratorPhone.trim() ? { administratorPhone: formAdministratorPhone.trim() } : {}),
+          ...(formAdministratorEmail.trim() ? { administratorEmail: formAdministratorEmail.trim() } : {}),
           description: formDescription.trim(),
           website: formWebsite.trim(),
           corporateEmail: formCorporateEmail.trim(),
@@ -2567,6 +2650,23 @@ export default function AgencyManagement() {
       {/* ========================================================================= */}
       {selectedAgency && (() => {
         const activeAgency = agencyDetails || selectedAgency;
+        const adminObj = (activeAgency.administrator && typeof activeAgency.administrator === 'object') ? activeAgency.administrator : null;
+        const adminName = adminObj?.name || activeAgency.administratorName || activeAgency.adminName || activeAgency.representativeName || '';
+        const adminPhone = adminObj?.phone || activeAgency.administratorPhone || activeAgency.adminPhone || activeAgency.representativePhone || '';
+        const adminEmail = adminObj?.email || activeAgency.administratorEmail || activeAgency.adminEmail || activeAgency.representativeEmail || '';
+        const adminProfileImage = adminObj?.profileImage ? getLogoUrl(adminObj.profileImage) : null;
+        const adminRole = adminObj?.role || 'agent';
+        const adminStatus = adminObj?.status || 'approved';
+        const isAgencyAdmin = adminObj?.isAgencyAdministrator ?? Boolean(adminName);
+        const adminId = adminObj?._id || '';
+
+        const statsObj = activeAgency.stats || {};
+        const totalProperties = statsObj.totalProperties ?? activeAgency.syncStats?.total ?? 0;
+        const propertiesWithAgent = statsObj.propertiesWithAgent ?? 0;
+        const unassignedProperties = statsObj.unassignedProperties ?? 0;
+        const totalAgents = statsObj.totalAgents ?? activeAgency.coveredAgentsCount ?? 0;
+        const availableSeats = statsObj.availableSeats ?? Math.max(0, (activeAgency.agentSeatsLimit ?? 10) - (activeAgency.coveredAgentsCount || 0));
+
         return createPortal(
           <div className="modal-overlay" onClick={() => { setSelectedAgency(null); setAgencyDetails(null); }}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '840px', width: '100%', maxHeight: '90vh' }}>
@@ -2680,37 +2780,44 @@ export default function AgencyManagement() {
                   </div>
                 </div>
 
-                {/* Live Metric Stats Bar (Properties, Agents, Seats, Sync Status) */}
+                {/* Live Metric Stats Bar (5 Operational Metrics) */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
                   gap: '0.65rem'
                 }}>
                   <div style={{ background: '#faf8f5', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '0.75rem', textAlign: 'center' }}>
                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600, display: 'block' }}>Total Properties</span>
                     <p style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0.2rem 0 0', color: 'var(--text-primary)' }}>
-                      {activeAgency.stats?.totalProperties ?? activeAgency.syncStats?.total ?? 0}
+                      {totalProperties}
+                    </p>
+                  </div>
+
+                  <div style={{ background: '#faf8f5', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '0.75rem', textAlign: 'center' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600, display: 'block' }}>With Agent</span>
+                    <p style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0.2rem 0 0', color: '#059669' }}>
+                      {propertiesWithAgent}
+                    </p>
+                  </div>
+
+                  <div style={{ background: '#faf8f5', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '0.75rem', textAlign: 'center' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600, display: 'block' }}>Unassigned</span>
+                    <p style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0.2rem 0 0', color: unassignedProperties > 0 ? '#d97706' : 'var(--text-muted)' }}>
+                      {unassignedProperties}
                     </p>
                   </div>
 
                   <div style={{ background: '#faf8f5', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '0.75rem', textAlign: 'center' }}>
                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600, display: 'block' }}>Total Agents</span>
                     <p style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0.2rem 0 0', color: '#0284c7' }}>
-                      {activeAgency.stats?.totalAgents ?? activeAgency.coveredAgentsCount ?? 0}
+                      {totalAgents}
                     </p>
                   </div>
 
                   <div style={{ background: '#faf8f5', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '0.75rem', textAlign: 'center' }}>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600, display: 'block' }}>Covered Seats</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600, display: 'block' }}>Available Seats</span>
                     <p style={{ fontSize: '1.25rem', fontWeight: 800, margin: '0.2rem 0 0', color: '#b47404' }}>
-                      {activeAgency.coveredAgentsCount || 0} / {activeAgency.agentSeatsLimit ?? 10}
-                    </p>
-                  </div>
-
-                  <div style={{ background: '#faf8f5', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '0.75rem', textAlign: 'center' }}>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600, display: 'block' }}>Sync Status</span>
-                    <p style={{ fontSize: '0.9rem', fontWeight: 800, margin: '0.45rem 0 0', textTransform: 'uppercase', color: activeAgency.syncStatus === 'success' ? '#059669' : activeAgency.syncStatus === 'failed' ? '#dc2626' : '#d97706' }}>
-                      {activeAgency.syncStatus || 'Idle'}
+                      {availableSeats} / {activeAgency.agentSeatsLimit ?? 10}
                     </p>
                   </div>
                 </div>
@@ -2731,6 +2838,145 @@ export default function AgencyManagement() {
                   }}>
                     {activeAgency.description || 'No detailed description specified for this brokerage.'}
                   </div>
+                </div>
+
+                {/* Agency Administrator / Representative Section */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.45rem' }}>
+                    <h4 style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+                      Agency Administrator / Representative
+                    </h4>
+                    {isAgencyAdmin && (
+                      <span className="badge badge-primary" style={{ fontSize: '0.68rem', padding: '0.15rem 0.5rem' }}>
+                        <ShieldCheck size={11} /> Primary Administrator
+                      </span>
+                    )}
+                  </div>
+
+                  {adminName || adminPhone || adminEmail ? (
+                    <div style={{
+                      background: 'linear-gradient(135deg, rgba(250, 179, 25, 0.08) 0%, rgba(10, 31, 57, 0.02) 100%)',
+                      border: '1px solid rgba(250, 179, 25, 0.3)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '1.15rem'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                        {/* Profile Image / Avatar */}
+                        {adminProfileImage ? (
+                          <img
+                            src={adminProfileImage}
+                            alt={adminName || 'Administrator'}
+                            style={{
+                              width: '56px',
+                              height: '56px',
+                              borderRadius: '50%',
+                              objectFit: 'cover',
+                              border: '2px solid #fab319',
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                            }}
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          />
+                        ) : (
+                          <div style={{
+                            width: '56px',
+                            height: '56px',
+                            borderRadius: '50%',
+                            background: 'linear-gradient(135deg, #fab319 0%, #b47404 100%)',
+                            color: '#ffffff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 800,
+                            fontSize: '1.2rem',
+                            boxShadow: '0 2px 8px rgba(250, 179, 25, 0.3)'
+                          }}>
+                            {getInitials(adminName || 'Admin')}
+                          </div>
+                        )}
+
+                        <div style={{ flex: 1, minWidth: '200px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
+                              {adminName || 'Agency Administrator'}
+                            </h3>
+                            {/* {adminStatus && (
+                              <span className={`badge ${adminStatus === 'approved' ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.68rem', textTransform: 'capitalize' }}>
+                                {adminStatus}
+                              </span>
+                            )} */}
+                            {/* {adminRole && (
+                              <span className="badge" style={{ fontSize: '0.68rem', background: 'rgba(10, 31, 57, 0.08)', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
+                                Role: {adminRole}
+                              </span>
+                            )} */}
+                          </div>
+                          {/* {adminId && (
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                              Admin ID: <code style={{ color: 'var(--text-primary)' }}>{adminId}</code>
+                            </div>
+                          )} */}
+                        </div>
+                      </div>
+
+                      {/* Contact Badges */}
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gap: '0.65rem'
+                      }}>
+                        {/* Phone */}
+                        <div style={{ padding: '0.65rem 0.85rem', borderRadius: '8px', background: '#ffffff', border: '1px solid var(--border-color)' }}>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <Phone size={12} style={{ color: 'var(--primary)' }} /> Administrator Phone
+                          </div>
+                          {adminPhone ? (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.2rem' }}>
+                              <a href={`tel:${adminPhone}`} style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)', textDecoration: 'none' }}>
+                                {adminPhone}
+                              </a>
+                              <a
+                                href={`https://wa.me/${String(adminPhone).replace(/[^0-9]/g, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Open WhatsApp chat with administrator"
+                                style={{ color: '#25D366', display: 'inline-flex', alignItems: 'center', gap: '0.2rem', fontSize: '0.72rem', fontWeight: 600, textDecoration: 'none' }}
+                              >
+                                <MessageCircle size={13} /> Chat
+                              </a>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>—</div>
+                          )}
+                        </div>
+
+                        {/* Email */}
+                        <div style={{ padding: '0.65rem 0.85rem', borderRadius: '8px', background: '#ffffff', border: '1px solid var(--border-color)' }}>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <Mail size={12} style={{ color: 'var(--primary)' }} /> Administrator Email
+                          </div>
+                          {adminEmail ? (
+                            <a href={`mailto:${adminEmail}`} style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)', textDecoration: 'none', display: 'block', marginTop: '0.2rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {adminEmail}
+                            </a>
+                          ) : (
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>—</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{
+                      padding: '1rem',
+                      background: 'rgba(0,0,0,0.02)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px dashed var(--border-color)',
+                      textAlign: 'center',
+                      color: 'var(--text-muted)',
+                      fontSize: '0.825rem'
+                    }}>
+                      No administrator contact currently on file for this agency.
+                    </div>
+                  )}
                 </div>
 
                 {/* Corporate Contact Channels */}
@@ -2892,6 +3138,16 @@ export default function AgencyManagement() {
                           </button>
                           <button
                             type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleCheckSyncStatus(activeAgency._id || activeAgency.id)}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.3rem 0.65rem', fontSize: '0.75rem' }}
+                            title="Fetch live feed sync status from server (GET /api/admin/agency/{id}/sync-status)"
+                          >
+                            <RefreshCw size={12} />
+                            <span>Check Status</span>
+                          </button>
+                          <button
+                            type="button"
                             className="btn btn-primary btn-sm"
                             onClick={() => handleSyncSingleFeed(activeAgency._id || activeAgency.id, activeAgency.name)}
                             disabled={syncingAgencyId === (activeAgency._id || activeAgency.id)}
@@ -2963,8 +3219,13 @@ export default function AgencyManagement() {
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                       <div>
-                        <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                          {activeAgency.tier?.name || 'Tier 1 — Basic'}
+                        <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span>{activeAgency.tier?.name || 'Tier 1 — Basic'}</span>
+                          {activeAgency.tier?.uiAppearance?.badgeType && (
+                            <span className="badge badge-warning" style={{ fontSize: '0.65rem' }}>
+                              {String(activeAgency.tier.uiAppearance.badgeType).replace(/_/g, ' ')}
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.2rem' }}>
                           <span>Level: {activeAgency.tier?.tierLevel || 1}</span>
@@ -2994,8 +3255,14 @@ export default function AgencyManagement() {
                       </span>
                     </div>
 
+                    {activeAgency.tier?.description && (
+                      <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0 0 0.85rem 0', whiteSpace: 'pre-line', lineHeight: '1.45' }}>
+                        {activeAgency.tier.description}
+                      </p>
+                    )}
+
                     {/* Feature Matrix */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.65rem', fontSize: '0.78rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.65rem', fontSize: '0.78rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-secondary)' }}>
                         <Check size={14} style={{ color: 'var(--success)' }} />
                         <span>Search Weight: {activeAgency.tier?.searchAndAI?.searchPriorityWeight ?? 1}x</span>
@@ -3016,7 +3283,16 @@ export default function AgencyManagement() {
                         ) : (
                           <X size={14} style={{ color: 'var(--text-muted)' }} />
                         )}
-                        <span>Card Highlight Badge</span>
+                        <span>Card Highlight Effect</span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-secondary)' }}>
+                        {activeAgency.tier?.uiAppearance?.enableShimmerAnimation ? (
+                          <Check size={14} style={{ color: 'var(--success)' }} />
+                        ) : (
+                          <X size={14} style={{ color: 'var(--text-muted)' }} />
+                        )}
+                        <span>Shimmer Animation</span>
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-secondary)' }}>
@@ -3026,6 +3302,15 @@ export default function AgencyManagement() {
                           <X size={14} style={{ color: 'var(--text-muted)' }} />
                         )}
                         <span>External Webview</span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-secondary)' }}>
+                        {activeAgency.tier?.conversionAndLeads?.enableNativeLeadNotifications ? (
+                          <Check size={14} style={{ color: 'var(--success)' }} />
+                        ) : (
+                          <X size={14} style={{ color: 'var(--text-muted)' }} />
+                        )}
+                        <span>Native Lead Notifications</span>
                       </div>
                     </div>
                   </div>
@@ -3327,6 +3612,62 @@ export default function AgencyManagement() {
                         value={formBrandColorHex}
                         onChange={(e) => setFormBrandColorHex(e.target.value)}
                         style={{ flex: 1, fontFamily: 'monospace' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginTop: '0.85rem' }}>
+                  {/* Administrator Name */}
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                      Administrator Name
+                    </label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <UserCheck size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--primary)', pointerEvents: 'none' }} />
+                      <input
+                        type="text"
+                        className="form-control"
+                        style={{ paddingLeft: '2.4rem' }}
+                        placeholder="Administrator / Representative name"
+                        value={formAdministratorName}
+                        onChange={(e) => setFormAdministratorName(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Administrator Phone */}
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                      Administrator Phone
+                    </label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <Phone size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--primary)', pointerEvents: 'none' }} />
+                      <input
+                        type="tel"
+                        className="form-control"
+                        style={{ paddingLeft: '2.4rem' }}
+                        placeholder="+18095551234"
+                        value={formAdministratorPhone}
+                        onChange={(e) => setFormAdministratorPhone(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Administrator Email */}
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                      Administrator Email
+                    </label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <Mail size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                      <input
+                        type="email"
+                        className="form-control"
+                        style={{ paddingLeft: '2.4rem' }}
+                        placeholder="admin@agency.com"
+                        value={formAdministratorEmail}
+                        onChange={(e) => setFormAdministratorEmail(e.target.value)}
                       />
                     </div>
                   </div>
@@ -3846,93 +4187,311 @@ export default function AgencyManagement() {
             {/* Body */}
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', overflowY: 'auto', padding: '1.5rem' }}>
               
-              {/* Section 1: Commercial Identity & Logo */}
+              {/* ========================================================= */}
+              {/* 1. REQUIRED FIELDS (ON TOP) */}
+              {/* ========================================================= */}
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(250, 179, 25, 0.08) 0%, rgba(255, 255, 255, 0.95) 100%)',
+                border: '1.5px solid rgba(250, 179, 25, 0.4)',
+                borderRadius: 'var(--radius-md)',
+                padding: '1.25rem',
+                boxShadow: '0 2px 10px rgba(250, 179, 25, 0.08)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Sparkles size={16} style={{ color: 'var(--primary)' }} />
+                    <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Required Agency Information (Mandatory)
+                    </span>
+                  </div>
+                  <span className="badge badge-warning" style={{ fontSize: '0.7rem', padding: '0.2rem 0.6rem' }}>
+                    * Required Fields
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
+                  {/* 1. name * */}
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                      name <span style={{ color: 'var(--danger)' }}>*</span>
+                    </label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <Building2 size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--primary)', pointerEvents: 'none' }} />
+                      <input
+                        type="text"
+                        className="form-control"
+                        style={{ paddingLeft: '2.4rem' }}
+                        placeholder="Agency commercial name (Required)"
+                        value={addForm.name}
+                        onChange={(e) => setAddForm(prev => ({ ...prev, name: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem', display: 'block' }}>
+                      Agency commercial name (Required)
+                    </span>
+                  </div>
+
+                  {/* 2. administratorName * */}
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                      administratorName <span style={{ color: 'var(--danger)' }}>*</span>
+                    </label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <UserCheck size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--primary)', pointerEvents: 'none' }} />
+                      <input
+                        type="text"
+                        className="form-control"
+                        style={{ paddingLeft: '2.4rem' }}
+                        placeholder="Full name of Agency Administrator / Representative (Required)"
+                        value={addForm.administratorName}
+                        onChange={(e) => setAddForm(prev => ({ ...prev, administratorName: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem', display: 'block' }}>
+                      Full name of Agency Administrator / Representative (Required)
+                    </span>
+                  </div>
+
+                  {/* 3. administratorPhone * */}
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                      administratorPhone <span style={{ color: 'var(--danger)' }}>*</span>
+                    </label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <Phone size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--primary)', pointerEvents: 'none' }} />
+                      <input
+                        type="tel"
+                        className="form-control"
+                        style={{ paddingLeft: '2.4rem' }}
+                        placeholder="Verified phone of Agency Administrator (Required)"
+                        value={addForm.administratorPhone}
+                        onChange={(e) => setAddForm(prev => ({ ...prev, administratorPhone: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem', display: 'block' }}>
+                      Verified phone of Agency Administrator for matching or auto-provisioning (Required)
+                    </span>
+                  </div>
+
+                  {/* 4. xmlFeedUrl * */}
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                      xmlFeedUrl <span style={{ color: 'var(--danger)' }}>*</span>
+                    </label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <Rss size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--primary)', pointerEvents: 'none' }} />
+                      <input
+                        type="url"
+                        className="form-control"
+                        style={{ paddingLeft: '2.4rem' }}
+                        placeholder="https://multiinmueblespc.com/feed.xml"
+                        value={addForm.xmlFeedUrl}
+                        onChange={(e) => setAddForm(prev => ({ ...prev, xmlFeedUrl: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem', display: 'block' }}>
+                      Agency external XML Feed URL (Required)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ========================================================= */}
+              {/* 2. OTHER FIELDS (IN GIVEN SEQUENCE) */}
+              {/* ========================================================= */}
               <div style={{
                 background: '#faf8f5',
                 border: '1px solid var(--border-color)',
                 borderRadius: 'var(--radius-md)',
                 padding: '1.25rem'
               }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.85rem' }}>
-                  1. Commercial Identity & Logo
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '1rem' }}>
+                  Additional Agency Fields & Configuration
                 </span>
 
-                <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '1rem' }}>
-                  {/* Logo Preview & Picker */}
-                  <div style={{
-                    width: '80px',
-                    height: '80px',
-                    borderRadius: '12px',
-                    background: '#ffffff',
-                    border: '1px dashed var(--border-color)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                    flexShrink: 0,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
-                  }}>
-                    {addForm.logoPreview ? (
-                      <img src={addForm.logoPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                    ) : (
-                      <Building2 size={32} style={{ color: 'var(--text-muted)', opacity: 0.4 }} />
-                    )}
-                  </div>
-
-                  <div style={{ flex: '1 1 240px' }}>
-                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                      Agency Logo <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(PNG, JPG, WEBP, SVG)</span>
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
-                        <Upload size={13} />
-                        Choose Logo File
-                        <input
-                          type="file"
-                          accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg"
-                          style={{ display: 'none' }}
-                          onChange={handleAddLogoChange}
-                        />
-                      </label>
-                      {addForm.logoPreview && (
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          onClick={handleRemoveAddLogo}
-                          style={{ color: 'var(--danger)', fontSize: '0.75rem' }}
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.35rem' }}>
-                      Upload square or high-resolution horizontal logo for listing attribution.
-                    </span>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
-                  {/* Agency Name */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  
+                  {/* 5. administratorEmail */}
                   <div className="form-group">
                     <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                      Agency Commercial Name <span style={{ color: 'var(--danger)' }}>*</span>
+                      administratorEmail <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Optional)</span>
                     </label>
-                    <input
-                      type="text"
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <Mail size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                      <input
+                        type="email"
+                        className="form-control"
+                        style={{ paddingLeft: '2.4rem' }}
+                        placeholder="Optional email of Agency Administrator"
+                        value={addForm.administratorEmail}
+                        onChange={(e) => setAddForm(prev => ({ ...prev, administratorEmail: e.target.value }))}
+                      />
+                    </div>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem', display: 'block' }}>
+                      Optional email of Agency Administrator
+                    </span>
+                  </div>
+
+                  {/* 6. description */}
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                      description <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Optional)</span>
+                    </label>
+                    <textarea
                       className="form-control"
-                      placeholder="e.g. Multiinmuebles Punta Cana"
-                      value={addForm.name}
-                      onChange={(e) => setAddForm(prev => ({ ...prev, name: e.target.value }))}
-                      required
+                      rows={2}
+                      placeholder="Agency description..."
+                      value={addForm.description}
+                      onChange={(e) => setAddForm(prev => ({ ...prev, description: e.target.value }))}
                     />
                   </div>
 
-                  {/* Brand Color Hex */}
+                  {/* 7. logo */}
                   <div className="form-group">
                     <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                      Brand Color Hex
+                      logo <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Optional PNG/JPG/WEBP)</span>
                     </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div style={{
+                        width: '60px',
+                        height: '60px',
+                        borderRadius: '10px',
+                        background: '#ffffff',
+                        border: '1px dashed var(--border-color)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden',
+                        flexShrink: 0
+                      }}>
+                        {addForm.logoPreview ? (
+                          <img src={addForm.logoPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                        ) : (
+                          <Building2 size={24} style={{ color: 'var(--text-muted)', opacity: 0.4 }} />
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
+                          <Upload size={13} />
+                          Choose File
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg"
+                            style={{ display: 'none' }}
+                            onChange={handleAddLogoChange}
+                          />
+                        </label>
+                        {addForm.logoPreview && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={handleRemoveAddLogo}
+                            style={{ color: 'var(--danger)', fontSize: '0.75rem' }}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem', display: 'block' }}>
+                      Optional agency logo image file (PNG/JPG/WEBP)
+                    </span>
+                  </div>
+
+                  {/* 8. website & 9. corporateWhatsapp */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
+                    {/* 8. website */}
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                        website
+                      </label>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <Globe size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                        <input
+                          type="url"
+                          className="form-control"
+                          style={{ paddingLeft: '2.4rem' }}
+                          placeholder="https://www.multiinmueblespc.com"
+                          value={addForm.website}
+                          onChange={(e) => setAddForm(prev => ({ ...prev, website: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+
+                    {/* 9. corporateWhatsapp */}
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                        corporateWhatsapp
+                      </label>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <MessageCircle size={15} style={{ position: 'absolute', left: '0.85rem', color: '#25D366', pointerEvents: 'none' }} />
+                        <input
+                          type="text"
+                          className="form-control"
+                          style={{ paddingLeft: '2.4rem' }}
+                          placeholder="+18095451798"
+                          value={addForm.corporateWhatsapp}
+                          onChange={(e) => setAddForm(prev => ({ ...prev, corporateWhatsapp: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 10. country, 11. region, 12. town */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem' }}>
+                    {/* 10. country */}
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                        country
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="DO"
+                        value={addForm.country}
+                        onChange={(e) => setAddForm(prev => ({ ...prev, country: e.target.value }))}
+                      />
+                    </div>
+
+                    {/* 11. region */}
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                        region
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="e.g. La Altagracia"
+                        value={addForm.region}
+                        onChange={(e) => setAddForm(prev => ({ ...prev, region: e.target.value }))}
+                      />
+                    </div>
+
+                    {/* 12. town */}
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                        town
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="e.g. Punta Cana"
+                        value={addForm.town}
+                        onChange={(e) => setAddForm(prev => ({ ...prev, town: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 13. brandColorHex */}
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                      brandColorHex
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', maxWidth: '300px' }}>
                       <input
                         type="color"
                         value={addForm.brandColorHex || '#002B49'}
@@ -3957,270 +4516,71 @@ export default function AgencyManagement() {
                       />
                     </div>
                   </div>
-                </div>
 
-                {/* Description */}
-                <div className="form-group" style={{ marginTop: '0.85rem' }}>
-                  <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                    Agency Description
-                  </label>
-                  <textarea
-                    className="form-control"
-                    rows={2}
-                    placeholder="Leading real estate agency in Punta Cana, Bávaro, and Cap Cana..."
-                    value={addForm.description}
-                    onChange={(e) => setAddForm(prev => ({ ...prev, description: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              {/* Section 2: Corporate Communication Channels */}
-              <div style={{
-                background: '#faf8f5',
-                border: '1px solid var(--border-color)',
-                borderRadius: 'var(--radius-md)',
-                padding: '1.25rem'
-              }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.85rem' }}>
-                  2. Corporate Communication Channels
-                </span>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                      Corporate Email
-                    </label>
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                      <Mail size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-                      <input
-                        type="email"
+                  {/* 14. tier, 15. agentSeatsLimit, 16. syncSchedule */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                    {/* 14. tier */}
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                        tier <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(MongoDB Tier ID)</span>
+                      </label>
+                      <select
                         className="form-control"
-                        style={{ paddingLeft: '2.4rem' }}
-                        placeholder="contacto@multiinmueblespc.com"
-                        value={addForm.corporateEmail}
-                        onChange={(e) => setAddForm(prev => ({ ...prev, corporateEmail: e.target.value }))}
-                      />
+                        value={addForm.tier}
+                        onChange={(e) => setAddForm(prev => ({ ...prev, tier: e.target.value }))}
+                        style={{ cursor: 'pointer', background: '#ffffff' }}
+                      >
+                        <option value="">Select a subscription tier...</option>
+                        {tiersList.map(tier => (
+                          <option key={tier._id} value={tier._id}>
+                            {tier.name || `Tier ${tier.tierLevel || 1}`} ({tier._id})
+                          </option>
+                        ))}
+                      </select>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem', display: 'block' }}>
+                        MongoDB Tier ID
+                      </span>
+                    </div>
+
+                    {/* 15. agentSeatsLimit */}
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                        agentSeatsLimit
+                      </label>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <Users size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                        <input
+                          type="number"
+                          min="1"
+                          max="5000"
+                          className="form-control"
+                          style={{ paddingLeft: '2.4rem' }}
+                          placeholder="10"
+                          value={addForm.agentSeatsLimit}
+                          onChange={(e) => setAddForm(prev => ({ ...prev, agentSeatsLimit: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+
+                    {/* 16. syncSchedule */}
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                        syncSchedule
+                      </label>
+                      <select
+                        className="form-control"
+                        value={addForm.syncSchedule}
+                        onChange={(e) => setAddForm(prev => ({ ...prev, syncSchedule: e.target.value }))}
+                        style={{ cursor: 'pointer', background: '#ffffff' }}
+                      >
+                        <option value="EVERY_6_HOURS">EVERY_6_HOURS</option>
+                        <option value="EVERY_12_HOURS">EVERY_12_HOURS</option>
+                        <option value="DAILY">DAILY</option>
+                        <option value="HOURLY">HOURLY</option>
+                      </select>
                     </div>
                   </div>
 
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                      Call Center Phone
-                    </label>
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                      <Phone size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-                      <input
-                        type="text"
-                        className="form-control"
-                        style={{ paddingLeft: '2.4rem' }}
-                        placeholder="+18095451798"
-                        value={addForm.corporateCallCenterPhone}
-                        onChange={(e) => setAddForm(prev => ({ ...prev, corporateCallCenterPhone: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                      Corporate WhatsApp
-                    </label>
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                      <MessageCircle size={15} style={{ position: 'absolute', left: '0.85rem', color: '#25D366', pointerEvents: 'none' }} />
-                      <input
-                        type="text"
-                        className="form-control"
-                        style={{ paddingLeft: '2.4rem' }}
-                        placeholder="+18095451798"
-                        value={addForm.corporateWhatsapp}
-                        onChange={(e) => setAddForm(prev => ({ ...prev, corporateWhatsapp: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                      Official Website URL
-                    </label>
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                      <Globe size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-                      <input
-                        type="url"
-                        className="form-control"
-                        style={{ paddingLeft: '2.4rem' }}
-                        placeholder="https://www.multiinmueblespc.com"
-                        value={addForm.website}
-                        onChange={(e) => setAddForm(prev => ({ ...prev, website: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 3: Geographic Location */}
-              <div style={{
-                background: '#faf8f5',
-                border: '1px solid var(--border-color)',
-                borderRadius: 'var(--radius-md)',
-                padding: '1.25rem'
-              }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.85rem' }}>
-                  3. Geographic Location
-                </span>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem' }}>
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                      Country Code
-                    </label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="DO"
-                      value={addForm.country}
-                      onChange={(e) => setAddForm(prev => ({ ...prev, country: e.target.value }))}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                      Region / Province
-                    </label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="e.g. La Altagracia"
-                      value={addForm.region}
-                      onChange={(e) => setAddForm(prev => ({ ...prev, region: e.target.value }))}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                      Town / City
-                    </label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="e.g. Punta Cana"
-                      value={addForm.town}
-                      onChange={(e) => setAddForm(prev => ({ ...prev, town: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 4: Subscription Tier & Seats */}
-              <div style={{
-                background: '#faf8f5',
-                border: '1px solid var(--border-color)',
-                borderRadius: 'var(--radius-md)',
-                padding: '1.25rem'
-              }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.85rem' }}>
-                  4. Subscription Tier & Seat Allocation
-                </span>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                      Subscription Tier ({tiersList.length} Available)
-                    </label>
-                    <select
-                      className="form-control"
-                      value={addForm.tier}
-                      onChange={(e) => setAddForm(prev => ({ ...prev, tier: e.target.value }))}
-                      style={{ cursor: 'pointer', background: '#ffffff' }}
-                    >
-                      <option value="">Select a subscription tier...</option>
-                      {tiersList.map(tier => (
-                        <option key={tier._id} value={tier._id}>
-                          {tier.name || `Tier ${tier.tierLevel || 1}`} — Level {tier.tierLevel || 1} (${tier.finalPrice ?? tier.price ?? 0} {tier.currency || 'USD'}/mo)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                      Covered Agent Seats Limit
-                    </label>
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                      <Users size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-                      <input
-                        type="number"
-                        min="1"
-                        max="5000"
-                        className="form-control"
-                        style={{ paddingLeft: '2.4rem' }}
-                        placeholder="10"
-                        value={addForm.agentSeatsLimit}
-                        onChange={(e) => setAddForm(prev => ({ ...prev, agentSeatsLimit: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 5: XML Feed & Auto-Synchronization */}
-              <div style={{
-                background: '#faf8f5',
-                border: '1px solid var(--border-color)',
-                borderRadius: 'var(--radius-md)',
-                padding: '1.25rem'
-              }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.85rem' }}>
-                  5. XML Feed Engine & Portal Synchronization
-                </span>
-
-                <div className="form-group" style={{ marginBottom: '0.85rem' }}>
-                  <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                    XML Feed URL
-                  </label>
-                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                    <Rss size={15} style={{ position: 'absolute', left: '0.85rem', color: 'var(--primary)', pointerEvents: 'none' }} />
-                    <input
-                      type="url"
-                      className="form-control"
-                      style={{ paddingLeft: '2.4rem' }}
-                      placeholder="https://www.multiinmueblespc.com/feed.xml"
-                      value={addForm.xmlFeedUrl}
-                      onChange={(e) => setAddForm(prev => ({ ...prev, xmlFeedUrl: e.target.value }))}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                      Auto-Sync Engine Status
-                    </label>
-                    <select
-                      className="form-control"
-                      value={addForm.autoSyncEnabled ? 'true' : 'false'}
-                      onChange={(e) => setAddForm(prev => ({ ...prev, autoSyncEnabled: e.target.value === 'true' }))}
-                      style={{ cursor: 'pointer', background: '#ffffff' }}
-                    >
-                      <option value="true">Enabled (Automatic Syncing)</option>
-                      <option value="false">Disabled (Manual Sync Only)</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.35rem' }}>
-                      Sync Schedule Interval
-                    </label>
-                    <select
-                      className="form-control"
-                      value={addForm.syncSchedule}
-                      onChange={(e) => setAddForm(prev => ({ ...prev, syncSchedule: e.target.value }))}
-                      style={{ cursor: 'pointer', background: '#ffffff' }}
-                    >
-                      <option value="EVERY_6_HOURS">Every 6 Hours (Default)</option>
-                      <option value="EVERY_12_HOURS">Every 12 Hours</option>
-                      <option value="DAILY">Daily (Once per day)</option>
-                      <option value="HOURLY">Hourly</option>
-                    </select>
-                  </div>
                 </div>
               </div>
 

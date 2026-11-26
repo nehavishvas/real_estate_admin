@@ -77,6 +77,39 @@ const defaultDailyLeads = [
   { date: "2026-09-30", day: 30, count: 0 }
 ];
 
+// Helper to get formatted current month string (YYYY-MM)
+const getCurrentMonth = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
+
+// Helper to extract month name, short name, year, and days in month from YYYY-MM
+const getMonthDetails = (monthStr) => {
+  if (!monthStr || typeof monthStr !== 'string') {
+    const now = new Date();
+    return {
+      monthStr: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+      monthName: now.toLocaleString('en-US', { month: 'long' }),
+      shortName: now.toLocaleString('en-US', { month: 'short' }),
+      year: now.getFullYear(),
+      daysInMonth: new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+    };
+  }
+  const parts = monthStr.split('-').map(Number);
+  const y = parts[0] || new Date().getFullYear();
+  const m = parts[1] || (new Date().getMonth() + 1);
+  const d = new Date(y, m - 1, 1);
+  return {
+    monthStr,
+    monthName: d.toLocaleString('en-US', { month: 'long' }),
+    shortName: d.toLocaleString('en-US', { month: 'short' }),
+    year: y,
+    daysInMonth: new Date(y, m, 0).getDate()
+  };
+};
+
 export default function Reports() {
   const {
     adminUser,
@@ -92,7 +125,8 @@ export default function Reports() {
   // Navigation Tabs: The 8 requested sections
   const [activeTab, setActiveTab] = useState('user_activity');
   const [dateRange, setDateRange] = useState('30days');
-  const [selectedMonth, setSelectedMonth] = useState('2026-09');
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth);
+  const [userActivityFilter, setUserActivityFilter] = useState('all'); // 'all' | 'active' | 'zero'
 
   // Loading States
   const [loading, setLoading] = useState(false);
@@ -202,6 +236,42 @@ export default function Reports() {
     }
   }, [adminUser?.token, baseUrl, selectedMonth, activeTab]);
 
+  // Fetch baseline live platform counts from /admin/dashboard & /admin/users
+  const fetchOverallStats = useCallback(async () => {
+    const token =
+      adminUser?.token ||
+      getCookie('token') ||
+      getCookie('klever_auth_data')?.data?.accessToken ||
+      getCookie('klever_auth_data')?.data?.token ||
+      getCookie('klever_auth_data')?.token;
+
+    if (!token) return;
+
+    try {
+      const headers = { Authorization: `Bearer ${token}` };
+      const [dashRes, usersRes] = await Promise.allSettled([
+        axios.get(`${baseUrl}/admin/dashboard`, { headers }),
+        axios.get(`${baseUrl}/admin/users?limit=100`, { headers })
+      ]);
+      if (dashRes.status === 'fulfilled') {
+        const dData = dashRes.value.data?.data || dashRes.value.data || {};
+        setDashboardStats(dData);
+      }
+      if (usersRes.status === 'fulfilled') {
+        const uList = usersRes.value.data?.data?.users || usersRes.value.data?.users || usersRes.value.data?.data || [];
+        if (Array.isArray(uList)) {
+          setApiUsers(uList);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch baseline overall stats in Reports:', err);
+    }
+  }, [adminUser?.token, baseUrl]);
+
+  useEffect(() => {
+    fetchOverallStats();
+  }, [fetchOverallStats]);
+
   useEffect(() => {
     fetchReportData(false, activeTab);
   }, [activeTab, selectedMonth, fetchReportData]);
@@ -224,7 +294,11 @@ export default function Reports() {
 
   // Aggregate Telemetry
   const metrics = useMemo(() => {
-    const totalUsers = userActivityData?.cards?.totalUsers ?? dashboardStats?.users?.total ?? dashboardStats?.totalUsers ?? (usersList.length > 0 ? usersList.length : 12);
+    const liveUsersTotal = dashboardStats?.users?.total ?? dashboardStats?.totalUsers ?? (usersList.length > 0 ? usersList.length : 0);
+    const totalUsers = (userActivityData?.cards?.totalUsers !== undefined && userActivityData?.cards?.totalUsers > 0)
+      ? userActivityData.cards.totalUsers
+      : (liveUsersTotal || (userActivityData?.cards?.totalUsers ?? 12));
+
     const totalProps = dashboardStats?.properties?.total ?? dashboardStats?.totalProperties ?? (propertiesList.length > 0 ? propertiesList.length : 842);
     const totalRealtors = agentActivityData?.cards?.totalAgents ?? dashboardStats?.agents?.total ?? dashboardStats?.realtors?.total ?? dashboardStats?.totalRealtors ?? (realtorsList.length > 0 ? realtorsList.length : 11);
     const totalLeads = leadsReportData?.cards?.totalLeads ?? dashboardStats?.leads?.total ?? dashboardStats?.totalLeads ?? 23;
@@ -232,7 +306,10 @@ export default function Reports() {
     const totalSearches = propertySearchReportData?.cards?.totalSearches ?? propertySearchReportData?.cards?.totalPropertySearches ?? searchAnalyticsData?.totalSearches ?? 73;
     const totalSaved = savedPropertiesReportData?.cards?.totalSavedProperties ?? savedPropertiesReportData?.cards?.totalSaved ?? savedPropertiesReportData?.cards?.totalSaves ?? 19;
 
-    const activeUsers = userActivityData?.cards?.activeUsers ?? (usersList.filter(u => u.isActive !== false && u.status !== 'Suspended').length || Math.max(5, Math.round(totalUsers * 0.42)));
+    const liveActiveUsers = usersList.filter(u => u.isActive !== false && u.status !== 'Suspended').length;
+    const activeUsers = (userActivityData?.cards?.activeUsers !== undefined && userActivityData?.cards?.activeUsers > 0)
+      ? userActivityData.cards.activeUsers
+      : (liveActiveUsers || totalUsers);
     const activeProps = propertiesList.filter(p => p.status === 'Active' || p.isActive !== false).length || Math.round(totalProps * 0.92);
     const verifiedRealtors = agentActivityData?.cards?.approvedAgents ?? (realtorsList.filter(r => (r.status || '').toLowerCase() === 'approved' || (r.status || '').toLowerCase() === 'verified').length || Math.round(totalRealtors * 0.875));
 
@@ -450,17 +527,49 @@ export default function Reports() {
     // Dynamic values from /admin/reports/user-activity?month=YYYY-MM
     const cards = userActivityData?.cards || {};
     const filter = userActivityData?.filter || {};
-    const dailyRegistrations = userActivityData?.dailyRegistrations || [];
+    const rawDailyRegistrations = userActivityData?.dailyRegistrations || [];
 
-    const totalUsers = cards.totalUsers ?? 12;
-    const activeUsers = cards.activeUsers ?? 12;
-    const inactiveUsers = cards.inactiveUsers ?? 0;
-    const totalRegistrationsInMonth = filter.totalRegistrationsInMonth ?? 4;
-    const monthName = filter.monthName || 'September';
-    const year = filter.year || 2026;
-    const daysInMonth = filter.daysInMonth || (dailyRegistrations.length || 30);
+    const monthInfo = getMonthDetails(selectedMonth);
+    const monthName = filter.monthName || monthInfo.monthName;
+    const year = filter.year || monthInfo.year;
+    const daysInMonth = filter.daysInMonth || monthInfo.daysInMonth;
+
+    // Generate daily registration data points for the entire selected month
+    const dailyRegistrations = rawDailyRegistrations.length > 0
+      ? rawDailyRegistrations
+      : Array.from({ length: daysInMonth }, (_, i) => {
+          const day = i + 1;
+          const date = `${monthInfo.monthStr}-${String(day).padStart(2, '0')}`;
+          return { date, day, count: 0 };
+        });
+
+    // Real overall totals fallback
+    const totalPlatformUsers = dashboardStats?.users?.total ?? dashboardStats?.totalUsers ?? (usersList.length > 0 ? usersList.length : 0);
+    const activePlatformUsers = usersList.filter(u => u.isActive !== false && u.status !== 'Suspended').length || totalPlatformUsers;
+    const inactivePlatformUsers = usersList.filter(u => u.isActive === false || u.status === 'Suspended').length || 0;
+
+    const totalUsers = (cards.totalUsers !== undefined && cards.totalUsers > 0)
+      ? cards.totalUsers
+      : (totalPlatformUsers || cards.totalUsers || 0);
+
+    const activeUsers = (cards.activeUsers !== undefined && cards.activeUsers > 0)
+      ? cards.activeUsers
+      : (activePlatformUsers || cards.activeUsers || 0);
+
+    const inactiveUsers = cards.inactiveUsers !== undefined
+      ? cards.inactiveUsers
+      : inactivePlatformUsers;
+
+    const totalRegistrationsInMonth = filter.totalRegistrationsInMonth ?? (dailyRegistrations.reduce((acc, d) => acc + (d.count || 0), 0) || 0);
 
     const maxCount = Math.max(1, ...dailyRegistrations.map(d => d.count || 0));
+
+    // Filtered daily table records based on userActivityFilter
+    const filteredDailyRegistrations = dailyRegistrations.filter(d => {
+      if (userActivityFilter === 'active') return (d.count || 0) > 0;
+      if (userActivityFilter === 'zero') return (d.count || 0) === 0;
+      return true;
+    });
 
     return (
       <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
@@ -655,14 +764,31 @@ export default function Reports() {
 
         {/* Daily Registrations Table (50vh scroll) */}
         <div className="glass-panel" style={{ padding: '1.5rem', width: '100%' }}>
-          <div className="flex-between" style={{ marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <h3 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Users size={16} className="text-primary" />
-              Daily User Registrations Log ({monthName} {year})
-            </h3>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-              Showing {dailyRegistrations.length} daily data points
-            </span>
+          <div className="flex-between" style={{ marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div>
+              <h3 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+                <Users size={16} className="text-primary" />
+                Daily User Registrations Log ({monthName} {year})
+              </h3>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 0' }}>
+                Showing {filteredDailyRegistrations.length} of {dailyRegistrations.length} daily entries for {monthName} {year}
+              </p>
+            </div>
+
+            {/* Status Filter matching other pages */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Status:</span>
+              <select
+                className="form-control form-select"
+                value={userActivityFilter}
+                onChange={(e) => setUserActivityFilter(e.target.value)}
+                style={{ width: '160px', padding: '0.35rem 1.8rem 0.35rem 0.75rem', fontSize: '0.78rem' }}
+              >
+                <option value="all">All Days ({dailyRegistrations.length})</option>
+                <option value="active">Active Days ({dailyRegistrations.filter(d => (d.count || 0) > 0).length})</option>
+                <option value="zero">Zero Signups ({dailyRegistrations.filter(d => (d.count || 0) === 0).length})</option>
+              </select>
+            </div>
           </div>
 
           <div className="table-container" style={{ maxHeight: '50vh', overflowY: 'auto' }}>
@@ -676,7 +802,7 @@ export default function Reports() {
                 </tr>
               </thead>
               <tbody>
-                {dailyRegistrations.map((d, i) => (
+                {filteredDailyRegistrations.map((d, i) => (
                   <tr key={i} style={d.count > 0 ? { background: 'rgba(250, 179, 25, 0.05)' } : {}}>
                     <td style={{ fontWeight: 600 }}>{d.date}</td>
                     <td>Day {d.day}</td>
@@ -723,9 +849,10 @@ export default function Reports() {
     const aiSearchPercentage = cards.aiSearchPercentage ?? cards.aiAdoptionRate ?? 80.82;
     const todaySearches = cards.todaySearches ?? cards.todayPropertySearches ?? (dailySearches.find(d => d.date === new Date().toISOString().slice(0, 10))?.count ?? 0);
 
-    const monthName = filter.monthName || 'September';
-    const year = filter.year || 2026;
-    const daysInMonth = filter.daysInMonth || (dailySearches.length || 30);
+    const monthInfo = getMonthDetails(selectedMonth);
+    const monthName = filter.monthName || monthInfo.monthName;
+    const year = filter.year || monthInfo.year;
+    const daysInMonth = filter.daysInMonth || (dailySearches.length || monthInfo.daysInMonth);
     const totalSearchesInMonth = filter.totalSearchesInMonth ?? filter.totalInMonth ?? (dailySearches.reduce((acc, d) => acc + (d.count || 0), 0) || totalSearches);
 
     const maxCount = Math.max(1, ...dailySearches.map((d) => d.count || 0));
@@ -1408,9 +1535,10 @@ export default function Reports() {
     const aiAdoptionRate = cards.aiAdoptionRate != null ? Number(cards.aiAdoptionRate) : 81.25;
     const successRate = cards.successRate != null ? Number(cards.successRate) : 80.77;
 
-    const monthName = filter.monthName || 'September';
-    const year = filter.year || 2026;
-    const daysInMonth = filter.daysInMonth || (dailyAiSearches.length || 30);
+    const monthInfo = getMonthDetails(selectedMonth);
+    const monthName = filter.monthName || monthInfo.monthName;
+    const year = filter.year || monthInfo.year;
+    const daysInMonth = filter.daysInMonth || (dailyAiSearches.length || monthInfo.daysInMonth);
     const totalAiSearchesInMonth = filter.totalAiSearchesInMonth ?? 25;
     const maxCount = Math.max(1, ...dailyAiSearches.map(d => d.count || 0));
 
@@ -1766,9 +1894,10 @@ export default function Reports() {
     const uniqueUsers = cards.uniqueUsers ?? cards.totalUniqueUsers ?? 6;
     const averageSavesPerProperty = cards.averageSavesPerProperty ?? cards.avgSavesPerProperty ?? cards.avgSavesPerUser ?? 2.71;
 
-    const monthName = filter.monthName || 'September';
-    const year = filter.year || 2026;
-    const daysInMonth = filter.daysInMonth || (dailySaves.length || 30);
+    const monthInfo = getMonthDetails(selectedMonth);
+    const monthName = filter.monthName || monthInfo.monthName;
+    const year = filter.year || monthInfo.year;
+    const daysInMonth = filter.daysInMonth || (dailySaves.length || monthInfo.daysInMonth);
     const totalSavesInMonth = filter.totalSavedPropertiesInMonth ?? filter.totalSavesInMonth ?? filter.totalSavedInMonth ?? (dailySaves.reduce((acc, d) => acc + (d.count || 0), 0) || totalSavedProperties);
 
     const maxCount = Math.max(1, ...dailySaves.map((d) => d.count || 0));
@@ -2046,9 +2175,10 @@ export default function Reports() {
     const completed = Number(cards.completed ?? cards.won ?? 5);
     const rejected = Number(cards.rejected ?? cards.lost ?? 1);
 
-    const monthName = filter.monthName || 'September';
-    const year = filter.year || 2026;
-    const daysInMonth = filter.daysInMonth || (dailyLeads.length || 30);
+    const monthInfo = getMonthDetails(selectedMonth);
+    const monthName = filter.monthName || monthInfo.monthName;
+    const year = filter.year || monthInfo.year;
+    const daysInMonth = filter.daysInMonth || (dailyLeads.length || monthInfo.daysInMonth);
     const totalLeadsInMonth = Number(filter.totalLeadsInMonth ?? 23);
     const maxCount = Math.max(1, ...dailyLeads.map(d => d.count || 0));
 
@@ -2343,9 +2473,10 @@ export default function Reports() {
     const rejectedAgents = cards.rejectedAgents ?? 1;
     const suspendedAgents = cards.suspendedAgents ?? 1;
 
-    const monthName = filter.monthName || 'September';
-    const year = filter.year || 2026;
-    const daysInMonth = filter.daysInMonth || (dailyRegistrations.length || 30);
+    const monthInfo = getMonthDetails(selectedMonth);
+    const monthName = filter.monthName || monthInfo.monthName;
+    const year = filter.year || monthInfo.year;
+    const daysInMonth = filter.daysInMonth || (dailyRegistrations.length || monthInfo.daysInMonth);
     const totalRegistrationsInMonth = filter.totalRegistrationsInMonth ?? 10;
     const maxCount = Math.max(1, ...dailyRegistrations.map(d => d.count || 0));
 
@@ -2717,23 +2848,53 @@ export default function Reports() {
         {/* Date Filter & Export Action Toolbar */}
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
           
-          {/* Month Selector for Report APIs */}
+          {/* Month & Period Selector matching management pages */}
           <div className="flex-align-center" style={{
             background: '#ffffff',
             border: '1px solid var(--border-color)',
             borderRadius: 'var(--radius-sm)',
-            padding: '0.4rem 0.65rem',
-            gap: '0.4rem'
+            padding: '0.35rem 0.65rem',
+            gap: '0.45rem',
+            flexWrap: 'wrap'
           }}>
             <Calendar size={14} style={{ color: 'var(--primary)' }} />
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Month:</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Month Filter:</span>
+
+            {/* Quick Month Selector */}
+            <select
+              className="form-control form-select"
+              value={['2026-11', '2026-10', '2026-09'].includes(selectedMonth) ? selectedMonth : 'custom'}
+              onChange={(e) => {
+                if (e.target.value !== 'custom') {
+                  setSelectedMonth(e.target.value);
+                }
+              }}
+              style={{
+                width: 'auto',
+                padding: '0.2rem 1.8rem 0.2rem 0.5rem',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+                border: 'none',
+                background: 'transparent'
+              }}
+            >
+              <option value="2026-11">November 2026 (Current)</option>
+              <option value="2026-10">October 2026</option>
+              <option value="2026-09">September 2026</option>
+              <option value="custom">Custom Month...</option>
+            </select>
+
             <input
               type="month"
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
+              title="Select custom report month"
               style={{
                 background: 'transparent',
                 border: 'none',
+                borderLeft: '1px solid var(--border-color)',
+                paddingLeft: '0.45rem',
                 color: 'var(--text-primary)',
                 fontWeight: 600,
                 fontSize: '0.8125rem',

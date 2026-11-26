@@ -63,6 +63,93 @@ const safeRenderText = (val, fallback = '—') => {
   return String(val);
 };
 
+// Helper to thoroughly extract an agent's license number, AEI code, or identification number
+const extractLicenseNumber = (agent) => {
+  if (!agent) return '';
+  const candidates = [
+    agent.licenseNumber,
+    agent.license,
+    agent.licenseCode,
+    agent.aeiNumber,
+    agent.idNumber,
+    agent.employeeId,
+    agent.realtorLicense,
+    agent.liceneseNumber,
+    agent.credentials?.licenseNumber,
+    agent.credentials?.license,
+    agent.credentials?.number,
+    agent.credentials?.aeiNumber,
+    agent.credentials?.idNumber,
+    agent.credentials?.licenseCode,
+    agent.credentials?.employeeId,
+    agent.user?.licenseNumber,
+    agent.user?.license,
+    agent.user?.aeiNumber,
+    agent.user?.idNumber,
+    agent.user?.credentials?.licenseNumber,
+    agent.user?.credentials?.license,
+    agent.raw?.licenseNumber,
+    agent.raw?.license,
+    agent.raw?.licenseCode,
+    agent.raw?.aeiNumber,
+    agent.raw?.idNumber,
+    agent.raw?.employeeId,
+    agent.raw?.realtorLicense,
+    agent.raw?.liceneseNumber,
+    agent.raw?.credentials?.licenseNumber,
+    agent.raw?.credentials?.license,
+    agent.raw?.credentials?.number,
+    agent.raw?.credentials?.aeiNumber,
+    agent.raw?.credentials?.idNumber,
+    agent.raw?.user?.licenseNumber,
+    agent.raw?.user?.license,
+    agent.raw?.user?.aeiNumber,
+    agent.raw?.user?.idNumber
+  ];
+
+  for (const c of candidates) {
+    if (c !== undefined && c !== null) {
+      const str = String(c).trim();
+      if (str && str !== '—' && str !== '-' && str !== 'null' && str !== 'undefined') {
+        // Ensure not a document file URL or image/pdf path
+        if (!/\.(png|jpg|jpeg|webp|pdf|doc|docx)$/i.test(str)) {
+          return str;
+        }
+      }
+    }
+  }
+  return '';
+};
+
+// Helper to determine if an agent account is an Agency Administrator (cannot be deleted)
+const checkIsAgencyAdmin = (agent) => {
+  if (!agent) return false;
+  const candidates = [
+    agent.isAgencyAdministrator,
+    agent.raw?.isAgencyAdministrator,
+    agent.user?.isAgencyAdministrator,
+    agent.raw?.user?.isAgencyAdministrator,
+    agent.isAgencyAdmin,
+    agent.raw?.isAgencyAdmin,
+    agent.user?.isAgencyAdmin
+  ];
+
+  for (const val of candidates) {
+    if (val === true || val === 1) return true;
+    if (typeof val === 'string') {
+      const lower = val.toLowerCase().trim();
+      if (lower === 'true' || lower === '1' || lower === 'yes') return true;
+    }
+  }
+
+  const role = (agent.role || agent.raw?.role || agent.user?.role || '').toLowerCase().trim();
+  if (role === 'agency_administrator' || role === 'agency_admin' || role === 'agencyadmin') {
+    return true;
+  }
+
+  return false;
+};
+
 // Color palette generator for consistent monogram initial avatar circles
 const getAvatarColors = (name = '') => {
   const palettes = [
@@ -848,6 +935,7 @@ export default function RealtorManagement() {
   const [agentToDelete, setAgentToDelete] = useState(null); // For Delete Agent Modal
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
+  const [fetchingEditDetails, setFetchingEditDetails] = useState(false);
 
   // Status Change Modal State (Opened by clicking the status action button in the row)
   const [statusModalAgent, setStatusModalAgent] = useState(null);
@@ -1156,10 +1244,13 @@ export default function RealtorManagement() {
         const nameVal = safeRenderText(a.name, '—');
         const emailVal = safeRenderText(a.email, '—');
         const phoneVal = safeRenderText(a.phone, '');
-        const agencyVal = safeRenderText(a.agencyName || a.agency, '—');
-        const licenseVal = safeRenderText(a.licenseNumber || a.liceneseNumber || a.license, '—');
+        const agencyVal = safeRenderText(a.agencyName || a.agency?.name || a.agency, '—');
+        const extractedLic = extractLicenseNumber(a);
+        const licenseVal = safeRenderText(extractedLic, '—');
+        const cleanLicense = licenseVal !== '—' ? licenseVal : '';
 
         const isActiveVal = a.isActive !== undefined ? Boolean(a.isActive) : (a.status ? normStatus === 'approved' : true);
+        const isAgencyAdmin = checkIsAgencyAdmin(a);
 
         return {
           _id: idVal,
@@ -1169,8 +1260,14 @@ export default function RealtorManagement() {
           phone: phoneVal,
           agency: agencyVal,
           agencyName: agencyVal,
-          license: licenseVal,
-          licenseNumber: licenseVal,
+          license: cleanLicense,
+          licenseNumber: cleanLicense,
+          aeiNumber: a.aeiNumber || a.credentials?.aeiNumber || a.user?.aeiNumber || '',
+          idNumber: a.idNumber || a.credentials?.idNumber || a.user?.idNumber || '',
+          employeeId: a.employeeId || a.credentials?.employeeId || '',
+          licenseCode: a.licenseCode || cleanLicense,
+          idType: a.idType || '',
+          isAgencyAdministrator: isAgencyAdmin,
           status: normStatus,
           rawStatus: a.status,
           isActive: isActiveVal,
@@ -1411,11 +1508,20 @@ export default function RealtorManagement() {
 
   // 4. DELETE AGENT: DELETE /admin/agents/:id
   const handleDeleteClick = (agent) => {
+    if (checkIsAgencyAdmin(agent)) {
+      toast.error('Agency Administrator accounts cannot be deleted');
+      return;
+    }
     setAgentToDelete(agent);
   };
 
   const handleConfirmDelete = async () => {
     if (!agentToDelete) return;
+    if (checkIsAgencyAdmin(agentToDelete)) {
+      toast.error('Agency Administrator accounts cannot be deleted');
+      setAgentToDelete(null);
+      return;
+    }
     const agentId = agentToDelete._id || agentToDelete.id;
     if (!adminUser?.token) {
       toast.error('Authentication token missing. Please sign in again.');
@@ -1464,13 +1570,20 @@ export default function RealtorManagement() {
   };
 
   // 5. UPDATE AGENT: /admin/agents/edit/:id
-  const handleEditClick = (agent) => {
+  const handleEditClick = async (agent) => {
     setEditingAgent(agent);
     setFormName(agent.name !== '—' ? safeRenderText(agent.name, '') : '');
     setFormEmail(agent.email !== '—' ? safeRenderText(agent.email, '') : '');
     setFormPhone(safeRenderText(agent.phone, ''));
     setFormAgencyName(agent.agencyName !== '—' ? safeRenderText(agent.agencyName || agent.agency, '') : '');
-    setFormLicenseNumber(agent.licenseNumber !== '—' ? safeRenderText(agent.licenseNumber || agent.license, '') : '');
+
+    // 1. Initial extraction from agent or cached details
+    const agentId = agent._id || agent.id;
+    let initialLic = extractLicenseNumber(agent);
+    if (!initialLic && selectedAgent && (selectedAgent._id || selectedAgent.id) === agentId) {
+      initialLic = extractLicenseNumber(agentDetails?.agent || agentDetails || selectedAgent);
+    }
+    setFormLicenseNumber(initialLic);
     setFormStatus(normalizeStatus(agent.status));
     setFormProfileImageFile(null);
     setFormProfileImagePreview(getMediaUrl(agent.profileImage) || '');
@@ -1478,6 +1591,46 @@ export default function RealtorManagement() {
     setFormDocumentName(agent.document ? 'Current document on file' : '');
     if (agenciesList.length === 0) {
       fetchAgencies();
+    }
+
+    // 2. Fetch full agent profile details via GET /admin/agents/:id to ensure license number and all fields are loaded
+    if (agentId && adminUser?.token) {
+      try {
+        setFetchingEditDetails(true);
+        const res = await axios.get(`${baseUrl}/admin/agents/${agentId}`, {
+          headers: {
+            Authorization: `Bearer ${adminUser.token}`
+          }
+        });
+        const fullData = res.data?.data?.agent || res.data?.data || res.data?.agent || res.data || {};
+        const fetchedLicense = extractLicenseNumber(fullData);
+        if (fetchedLicense) {
+          setFormLicenseNumber(prev => (prev && prev.trim()) ? prev : fetchedLicense);
+        }
+        if (fullData.name && (!agent.name || agent.name === '—')) {
+          setFormName(prev => (prev && prev.trim()) ? prev : safeRenderText(fullData.name, ''));
+        }
+        if (fullData.email && (!agent.email || agent.email === '—')) {
+          setFormEmail(prev => (prev && prev.trim()) ? prev : safeRenderText(fullData.email, ''));
+        }
+        if (fullData.phone && !agent.phone) {
+          setFormPhone(prev => (prev && prev.trim()) ? prev : safeRenderText(fullData.phone, ''));
+        }
+        const fullAgency = fullData.agencyName || fullData.agency?.name || fullData.agency;
+        if (fullAgency && (!agent.agencyName || agent.agencyName === '—')) {
+          setFormAgencyName(prev => (prev && prev.trim()) ? prev : safeRenderText(fullAgency, ''));
+        }
+        if (fullData.profileImage && !agent.profileImage) {
+          setFormProfileImagePreview(prev => prev || getMediaUrl(fullData.profileImage));
+        }
+        if (fullData.document && !agent.document) {
+          setFormDocumentName(prev => prev || 'Current document on file');
+        }
+      } catch (err) {
+        console.warn('Could not fetch detailed agent info for edit form:', err);
+      } finally {
+        setFetchingEditDetails(false);
+      }
     }
   };
 
@@ -1512,6 +1665,14 @@ export default function RealtorManagement() {
       formData.append('phone', formPhone);
       formData.append('agencyName', formAgencyName);
       formData.append('licenseNumber', formLicenseNumber);
+      formData.append('license', formLicenseNumber);
+      formData.append('licenseCode', formLicenseNumber);
+      if (editingAgent?.aeiNumber || editingAgent?.raw?.aeiNumber) {
+        formData.append('aeiNumber', formLicenseNumber);
+      }
+      if (editingAgent?.idNumber || editingAgent?.raw?.idNumber) {
+        formData.append('idNumber', editingAgent.idNumber || editingAgent.raw?.idNumber);
+      }
 
       if (formProfileImageFile) {
         formData.append('profileImage', formProfileImageFile);
@@ -1582,6 +1743,8 @@ export default function RealtorManagement() {
             agencyName: formAgencyName,
             license: formLicenseNumber,
             licenseNumber: formLicenseNumber,
+            licenseCode: formLicenseNumber,
+            aeiNumber: a.aeiNumber ? formLicenseNumber : a.aeiNumber,
             status: formStatus || a.status,
             profileImage: updatedObj?.profileImage || (formProfileImageFile ? formProfileImagePreview : a.profileImage),
             document: updatedObj?.document || a.document
@@ -2049,7 +2212,7 @@ export default function RealtorManagement() {
               <tr>
                 <th>Agent Profile</th>
                 <th>Brokerage Firm</th>
-                <th>License ID</th>
+                {/* <th>License ID</th> */}
                 <th>Status</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
@@ -2079,7 +2242,14 @@ export default function RealtorManagement() {
                             size={38}
                           />
                           <div>
-                            <p style={{ fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>{safeRenderText(agent.name)}</p>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              <p style={{ fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>{safeRenderText(agent.name)}</p>
+                              {checkIsAgencyAdmin(agent) && (
+                                <span className="badge badge-primary" style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem', fontWeight: 700, borderRadius: '4px' }}>
+                                  Agency Admin
+                                </span>
+                              )}
+                            </div>
                             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>{safeRenderText(agent.email)}</p>
                             {agent.phone && (
                               <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: 0 }}>{safeRenderText(agent.phone, '')}</p>
@@ -2093,7 +2263,7 @@ export default function RealtorManagement() {
                           <span style={{ fontWeight: 500 }}>{safeRenderText(agent.agency || agent.agencyName)}</span>
                         </div>
                       </td>
-                      <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{safeRenderText(agent.license || agent.licenseNumber)}</td>
+                      {/* <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{safeRenderText(agent.license || agent.licenseNumber)}</td> */}
                       <td>
                         {renderStatusBadge(agent.status, agent.isActive)}
                       </td>
@@ -2142,13 +2312,20 @@ export default function RealtorManagement() {
                               <UserX size={14} />
                             )}
                           </button>
-                          <button
-                            className="btn btn-ghost btn-sm btn-icon text-danger"
-                            onClick={() => handleDeleteClick(agent)}
-                            title="Delete Realtor Account"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          {(() => {
+                            const isAgencyAdmin = checkIsAgencyAdmin(agent);
+                            return (
+                              <button
+                                className={`btn btn-ghost btn-sm btn-icon ${isAgencyAdmin ? 'text-muted' : 'text-danger'}`}
+                                onClick={() => !isAgencyAdmin && handleDeleteClick(agent)}
+                                disabled={isAgencyAdmin || isRowActioning}
+                                title={isAgencyAdmin ? 'Agency Administrator accounts cannot be deleted' : 'Delete Realtor Account'}
+                                style={isAgencyAdmin ? { opacity: 0.35, cursor: 'not-allowed' } : {}}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            );
+                          })()}
                         </div>
                       </td>
                     </tr>
@@ -2211,9 +2388,16 @@ export default function RealtorManagement() {
                         fontSize="1rem"
                       />
                       <div>
-                        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {agent.name}
-                        </h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                          <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {agent.name}
+                          </h4>
+                          {checkIsAgencyAdmin(agent) && (
+                            <span className="badge badge-primary" style={{ fontSize: '0.62rem', padding: '0.1rem 0.35rem', fontWeight: 700, borderRadius: '4px' }}>
+                              Agency Admin
+                            </span>
+                          )}
+                        </div>
                         <p style={{ margin: '0.1rem 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                           {agent.email}
                         </p>
@@ -2241,10 +2425,10 @@ export default function RealtorManagement() {
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>Brokerage Firm</span>
                       <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{safeRenderText(agent.agency || agent.agencyName, '—')}</span>
                     </div>
-                    <div>
+                    {/* <div>
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>License ID</span>
                       <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-primary)' }}>{safeRenderText(agent.license || agent.licenseNumber, '—')}</span>
-                    </div>
+                    </div> */}
                   </div>
 
                   {/* Action Buttons Row */}
@@ -2299,14 +2483,25 @@ export default function RealtorManagement() {
                         <UserX size={15} />
                       )}
                     </button>
-                    <button
-                      className="btn btn-secondary btn-sm btn-icon text-danger"
-                      onClick={() => handleDeleteClick(agent)}
-                      title="Delete Realtor Account"
-                      style={{ width: '36px', height: '36px', padding: 0 }}
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    {(() => {
+                      const isAgencyAdmin = checkIsAgencyAdmin(agent);
+                      return (
+                        <button
+                          className={`btn btn-secondary btn-sm btn-icon ${isAgencyAdmin ? 'text-muted' : 'text-danger'}`}
+                          onClick={() => !isAgencyAdmin && handleDeleteClick(agent)}
+                          disabled={isAgencyAdmin || isRowActioning}
+                          title={isAgencyAdmin ? 'Agency Administrator accounts cannot be deleted' : 'Delete Realtor Account'}
+                          style={{
+                            width: '36px',
+                            height: '36px',
+                            padding: 0,
+                            ...(isAgencyAdmin ? { opacity: 0.35, cursor: 'not-allowed' } : {})
+                          }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -3345,7 +3540,14 @@ export default function RealtorManagement() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">License Number / Code *</label>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>License Number / Code *</span>
+                  {fetchingEditDetails && (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 'normal', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <Loader2 size={11} className="animate-spin" /> Fetching credentials...
+                    </span>
+                  )}
+                </label>
                 <input
                   type="text"
                   className="form-control"
@@ -3597,8 +3799,8 @@ export default function RealtorManagement() {
                 type="button"
                 className="btn btn-danger"
                 onClick={handleConfirmDelete}
-                disabled={deleteLoading}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                disabled={deleteLoading || checkIsAgencyAdmin(agentToDelete)}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', ...(checkIsAgencyAdmin(agentToDelete) ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
               >
                 {deleteLoading ? (
                   <>
